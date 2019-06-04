@@ -414,5 +414,10 @@ int main( int argc, char** argv )
     }
 
     int ret = concat_file();
+
+    if (ret != 0) {
+      printf("PNG Concat Failed!");
+    }
+
     return 0;
 }

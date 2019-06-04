@@ -107,7 +107,6 @@ void *get_files(void *arg) {
 
       if (curl_handle == NULL) {
           fprintf(stderr, "curl_easy_init: returned NULL\n");
-          return 1;
       }
 
       /* specify URL to get */
@@ -470,6 +469,10 @@ int main( int argc, char** argv )
     free(p_tids);
 
     int ret = concat_file();
+
+    if (ret != 0) {
+      printf("PNG Concat Failed!");
+    }
 
     return 0;
 }
