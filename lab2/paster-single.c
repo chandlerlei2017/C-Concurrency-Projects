@@ -55,7 +55,7 @@ size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
 size_t write_cb_curl3(char *p_recv, size_t size, size_t nmemb, void *p_userdata);
 int recv_buf_init(RECV_BUF *ptr, size_t max_size);
 int recv_buf_cleanup(RECV_BUF *ptr);
-int write_file(const char *path, const void *in, size_t len);
+int write_file(const char *path, const void *in, size_t len, int* count);
 
 
 /**
@@ -163,10 +163,13 @@ int recv_buf_cleanup(RECV_BUF *ptr)
  * @param len size_t, length of the input data in bytes
  */
 
-int write_file(const char *path, const void *in, size_t len)
+int write_file(const char *path, const void *in, size_t len, int* count)
 {
     FILE *fp = NULL;
-
+    if( access( path, F_OK ) != -1 ) {
+        printf("File already exists!\n");
+        return -1;
+    }
     if (path == NULL) {
         fprintf(stderr, "write_file: file name is null!\n");
         return -1;
@@ -187,6 +190,8 @@ int write_file(const char *path, const void *in, size_t len)
         fprintf(stderr, "write_file: imcomplete write!\n");
         return -3;
     }
+
+    *count = *count + 1;
     return fclose(fp);
 }
 
@@ -200,58 +205,62 @@ int main( int argc, char** argv )
     char fname[256];
     pid_t pid =getpid();
 
-    recv_buf_init(&recv_buf, BUF_SIZE);
+    int count = 0;
 
-    if (argc == 1) {
-        strcpy(url, IMG_URL);
-    } else {
-        strcpy(url, argv[1]);
+    while(count < 50) {
+        recv_buf_init(&recv_buf, BUF_SIZE);
+
+        if (argc == 1) {
+            strcpy(url, IMG_URL);
+        } else {
+            strcpy(url, argv[1]);
+        }
+        printf("%s: URL is %s\n", argv[0], url);
+
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+
+        /* init a curl session */
+        curl_handle = curl_easy_init();
+
+        if (curl_handle == NULL) {
+            fprintf(stderr, "curl_easy_init: returned NULL\n");
+            return 1;
+        }
+
+        /* specify URL to get */
+        curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+
+        /* register write call back function to process received data */
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_cb_curl3);
+        /* user defined data structure passed to the call back function */
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&recv_buf);
+
+        /* register header call back function to process received header data */
+        curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, header_cb_curl);
+        /* user defined data structure passed to the call back function */
+        curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *)&recv_buf);
+
+        /* some servers requires a user-agent field */
+        curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+
+
+        /* get it! */
+        res = curl_easy_perform(curl_handle);
+
+        if( res != CURLE_OK) {
+            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        } else {
+        printf("%lu bytes received in memory %p, seq=%d.\n", \
+                recv_buf.size, recv_buf.buf, recv_buf.seq);
+        }
+
+        sprintf(fname, "./output_%d.png", recv_buf.seq);
+        write_file(fname, recv_buf.buf, recv_buf.size, &count);
+
+        /* cleaning up */
+        curl_easy_cleanup(curl_handle);
+        curl_global_cleanup();
+        recv_buf_cleanup(&recv_buf);
     }
-    printf("%s: URL is %s\n", argv[0], url);
-
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-
-    /* init a curl session */
-    curl_handle = curl_easy_init();
-
-    if (curl_handle == NULL) {
-        fprintf(stderr, "curl_easy_init: returned NULL\n");
-        return 1;
-    }
-
-    /* specify URL to get */
-    curl_easy_setopt(curl_handle, CURLOPT_URL, url);
-
-    /* register write call back function to process received data */
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_cb_curl3);
-    /* user defined data structure passed to the call back function */
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&recv_buf);
-
-    /* register header call back function to process received header data */
-    curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, header_cb_curl);
-    /* user defined data structure passed to the call back function */
-    curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *)&recv_buf);
-
-    /* some servers requires a user-agent field */
-    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
-
-
-    /* get it! */
-    res = curl_easy_perform(curl_handle);
-
-    if( res != CURLE_OK) {
-        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-    } else {
-	printf("%lu bytes received in memory %p, seq=%d.\n", \
-               recv_buf.size, recv_buf.buf, recv_buf.seq);
-    }
-
-    sprintf(fname, "./output_%d_%d.png", recv_buf.seq, pid);
-    write_file(fname, recv_buf.buf, recv_buf.size);
-
-    /* cleaning up */
-    curl_easy_cleanup(curl_handle);
-    curl_global_cleanup();
-    recv_buf_cleanup(&recv_buf);
     return 0;
 }
