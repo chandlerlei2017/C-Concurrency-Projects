@@ -5,11 +5,13 @@ CC = gcc
 CFLAGS = -Wall -std=c99 -g # "curl-config --cflags" output is empty
 LD = gcc
 LDFLAGS = -std=c99 -g
-LDLIBS = -lcurl # "curl-config --libs" output
+LDLIBS = -lcurl -lz # "curl-config --libs" output
 
-SRCS   = paster-single.c paster-multi.c
-OBJS1  = paster-single.o
-OBJS2  = paster-multi.o
+LIB_UTIL = zutil.o crc.o
+
+SRCS   = paster-single.c paster-multi.c crc.c zutil.c
+OBJS1  = paster-single.o $(LIB_UTIL)
+OBJS2  = paster-multi.o $(LIB_UTIL)
 TARGETS= paster-single paster-multi
 
 all: ${TARGETS}
