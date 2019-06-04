@@ -5,7 +5,7 @@ CC = gcc
 CFLAGS = -Wall -std=c99 -g # "curl-config --cflags" output is empty
 LD = gcc
 LDFLAGS = -std=c99 -g
-LDLIBS = -lcurl -lz # "curl-config --libs" output
+LDLIBS = -lcurl -lz -pthread# "curl-config --libs" output
 
 LIB_UTIL = zutil.o crc.o
 
