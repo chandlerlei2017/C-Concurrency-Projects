@@ -62,13 +62,15 @@ struct thread_args              /* thread input parameters struct */
     char* url;
 };
 
+char* files[50];
+int file_size[50];
 
 
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
 size_t write_cb_curl3(char *p_recv, size_t size, size_t nmemb, void *p_userdata);
 int recv_buf_init(RECV_BUF *ptr, size_t max_size);
 int recv_buf_cleanup(RECV_BUF *ptr);
-int write_file(const char *path, const void *in, size_t len, int* count);
+int write_file(int seq, const void *in, size_t len, int* count);
 int concat_file();
 void *get_files(void *arg);
 
@@ -93,7 +95,6 @@ void *get_files(void *arg) {
   CURLcode res;
   char url[256];
   RECV_BUF recv_buf;
-  char fname[256];
 
   while( *(p_in -> count) < 50) {
       recv_buf_init(&recv_buf, BUF_SIZE);
@@ -136,8 +137,7 @@ void *get_files(void *arg) {
               recv_buf.size, recv_buf.buf, recv_buf.seq);
       }
 
-      sprintf(fname, "./output_%d.png", recv_buf.seq);
-      write_file(fname, recv_buf.buf, recv_buf.size, p_in -> count);
+      write_file(recv_buf.seq, recv_buf.buf, recv_buf.size, p_in -> count);
 
       /* cleaning up */
       curl_easy_cleanup(curl_handle);
@@ -151,29 +151,19 @@ void *get_files(void *arg) {
 int concat_file()
 {
     int width;
-    FILE* file_1 = fopen("./output_0.png", "rb");
-    fseek(file_1, 16, SEEK_SET);
-    fread(&width, 4, 1, file_1);
-    fclose(file_1);
-    char path[1000];
+    memcpy(&width, files[0] + 16, 4);
 
-    width = htonl(width);
+    width = ntohl(width);
 
-    /*Initialize buffers required to be updated as images are concatenated*/
     int height = 0;
     int i = 0;
 
     for (i = 0; i < 50; i++) {
         int image_height;
-        FILE* image = fopen("./output_0.png", "rb");
 
-        /*Read-in image height, converting as required from network to system order*/
-        fseek(image, 20, SEEK_SET);
-        fread(&image_height, 4, 1, image);
-        image_height = ntohl(image_height);
+        memcpy(&image_height, files[i] + 20, 4);
 
-        /*Update all_png image height*/
-        height = height + image_height;
+        height = height + ntohl(image_height);
     }
 
     U8 idat_data_buff[(width*4 + 1)* height];
@@ -183,26 +173,19 @@ int concat_file()
     U64 total_compressed_length = 0;
 
     i = 0;
-    /*Iterate through each png passed in as argument*/
+
     for (i = 0; i < 50; i++) {
-        /*Update Image Height as Stacked PNG components are added*/
-        sprintf(path,"./output_%d.png", i);
-        FILE* image = fopen(path, "rb");
-
-
-        /* IDAT Chunk for each PNG */
         U64 idat_length;
 
         /* Seek to respective position, and read-in converting to system order as required*/
-        fseek(image,33, SEEK_SET);
-        fread(&idat_length, 4, 1, image);
+
+        memcpy(&idat_length, files[i] + 33, 4);
         idat_length = ntohl(idat_length);
 
         /*Load data from IDAT into idat buffer for new png file*/
         U8 idat_buff[idat_length];
-        fseek(image, 41, SEEK_SET);
-        fread(idat_buff, idat_length, 1, image);
-        fclose(image);
+
+        memcpy(&idat_buff, files[i] + 41, idat_length);
 
         U64 out_length = 0;
         int ret= 0;
@@ -217,10 +200,6 @@ int concat_file()
         /*Update total length of PNG*/
         total_data_length += out_length;
     }
-
-    /* For size of decompressed data:
-        printf("height: %d, uncompressed data: %ld \n", height, total_data_length);
-    */
 
     /*Perform data compression of IDATA for insertion into new PNGr*/
     int new_ret = 0;
@@ -238,10 +217,7 @@ int concat_file()
     unsigned char header[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
     unsigned char ihdr_buffer[25];
 
-    file_1 = fopen("./output_0.png", "rb");
-    fseek(file_1, 8, SEEK_SET);
-    fread(ihdr_buffer, 25, 1, file_1);
-    fclose(file_1);
+    memcpy(&ihdr_buffer, files[0] + 8, 25);
 
     /* Set iHEADER components for ALL_PNG */
     unsigned char iend[4] = {'I', 'E', 'N', 'D'};
@@ -290,7 +266,6 @@ int concat_file()
 
     /* Close completed new png and return */
     fclose(all_png);
-
     return 0;
 }
 
@@ -385,15 +360,10 @@ int recv_buf_cleanup(RECV_BUF *ptr)
  * @param len size_t, length of the input data in bytes
  */
 
-int write_file(const char *path, const void *in, size_t len, int* count)
+int write_file(int seq, const void *in, size_t len, int* count)
 {
-    FILE *fp = NULL;
-    if( access( path, F_OK ) != -1 ) {
+    if( files[seq] != NULL ) {
         printf("File already exists!\n");
-        return -1;
-    }
-    if (path == NULL) {
-        fprintf(stderr, "write_file: file name is null!\n");
         return -1;
     }
 
@@ -402,19 +372,24 @@ int write_file(const char *path, const void *in, size_t len, int* count)
         return -1;
     }
 
-    fp = fopen(path, "wb");
-    if (fp == NULL) {
-        perror("fopen");
-        return -2;
-    }
+    // fp = fopen(path, "wb");
+    // if (fp == NULL) {
+    //     perror("fopen");
+    //     return -2;
+    // }
 
-    if (fwrite(in, 1, len, fp) != len) {
-        fprintf(stderr, "write_file: imcomplete write!\n");
-        return -3;
-    }
+    // if (fwrite(in, 1, len, fp) != len) {
+    //     fprintf(stderr, "write_file: imcomplete write!\n");
+    //     return -3;
+    // }
+
+    files[seq] = malloc(len);
+    file_size[seq] = len;
+
+    memcpy(files[seq], in, len);
 
     *count = *count + 1;
-    return fclose(fp);
+    return 0;
 }
 
 
@@ -449,6 +424,13 @@ int main( int argc, char** argv )
       }
     }
 
+    int j = 0;
+
+    for (j = 0; j < 50; j++){
+        files[j] = NULL;
+        file_size[j] = 0;
+    }
+
     pthread_t *p_tids = malloc(sizeof(pthread_t) * t);
     int count = 0;
 
@@ -468,7 +450,28 @@ int main( int argc, char** argv )
 
     free(p_tids);
 
+    // FILE* fp;
+    // char path[1000];
+
+    // for (int i = 0; i < 50; i ++){
+    //     sprintf(path,"./output_%d.png", i);
+    //     fp = fopen(path, "wb");
+    //     if (fp == NULL) {
+    //         perror("fopen");
+    //         return -2;
+    //     }
+
+    //     if (fwrite(files[i], 1, file_size[i], fp) != file_size[i]) {
+    //         fprintf(stderr, "write_file: imcomplete write!\n");
+    //         return -3;
+    //     }
+    // }
+
     int ret = concat_file();
+
+    for (j = 0; j < 50; j++){
+        free(files[j]);
+    }
 
     if (ret != 0) {
       printf("PNG Concat Failed!");
