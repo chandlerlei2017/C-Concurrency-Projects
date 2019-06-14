@@ -9,17 +9,13 @@ LDLIBS = -lcurl -lz -pthread# "curl-config --libs" output
 
 LIB_UTIL = zutil.o crc.o
 
-SRCS   = paster-single.c paster-multi.c crc.c zutil.c
-OBJS1  = paster-single.o $(LIB_UTIL)
-OBJS2  = paster-multi.o $(LIB_UTIL)
-TARGETS= paster-single paster-multi
+SRCS   = paster.c crc.c zutil.c
+OBJS2  = paster.o $(LIB_UTIL)
+TARGETS= paster
 
 all: ${TARGETS}
 
-paster-single: $(OBJS1)
-	$(LD) -o $@ $^ $(LDLIBS) $(LDFLAGS)
-
-paster-multi: $(OBJS2)
+paster: $(OBJS2)
 	$(LD) -o $@ $^ $(LDLIBS) $(LDFLAGS)
 
 %.o: %.c

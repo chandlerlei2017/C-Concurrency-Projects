@@ -23,7 +23,6 @@
  * @see https://ec.haxx.se/callback-write.html
  */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -132,9 +131,6 @@ void *get_files(void *arg) {
 
       if( res != CURLE_OK) {
           fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-      } else {
-      printf("%lu bytes received in memory %p, seq=%d.\n", \
-              recv_buf.size, recv_buf.buf, recv_buf.seq);
       }
 
       write_file(recv_buf.seq, recv_buf.buf, recv_buf.size, p_in -> count);
@@ -363,7 +359,6 @@ int recv_buf_cleanup(RECV_BUF *ptr)
 int write_file(int seq, const void *in, size_t len, int* count)
 {
     if( files[seq] != NULL ) {
-        printf("File already exists!\n");
         return -1;
     }
 
@@ -371,17 +366,6 @@ int write_file(int seq, const void *in, size_t len, int* count)
         fprintf(stderr, "write_file: input data is null!\n");
         return -1;
     }
-
-    // fp = fopen(path, "wb");
-    // if (fp == NULL) {
-    //     perror("fopen");
-    //     return -2;
-    // }
-
-    // if (fwrite(in, 1, len, fp) != len) {
-    //     fprintf(stderr, "write_file: imcomplete write!\n");
-    //     return -3;
-    // }
 
     files[seq] = malloc(len);
     file_size[seq] = len;
@@ -405,7 +389,6 @@ int main( int argc, char** argv )
       switch (c) {
       case 't':
       t = strtoul(optarg, NULL, 10);
-      printf("option -t specifies a value of %d.\n", t);
       if (t <= 0) {
         fprintf(stderr, "%s: %s > 0 -- 't'\n", argv[0], str);
         return -1;
@@ -413,7 +396,6 @@ int main( int argc, char** argv )
       break;
       case 'n':
       n = strtoul(optarg, NULL, 10);
-      printf("option -n specifies a value of %d.\n", n);
       if (n <= 0 || n > 3) {
         fprintf(stderr, "%s: %s 1, 2, or 3 -- 'n'\n", argv[0], str);
         return -1;
@@ -440,8 +422,8 @@ int main( int argc, char** argv )
     in_params.url = url;
 
     for (int i=0; i < t; i++) {
-      sprintf(url,"http://ece252-%d.uwaterloo.ca:2520/image?img=%d", i % 3 + 1, n);
-      pthread_create(p_tids + i, NULL, get_files, &in_params);
+        sprintf(url,"http://ece252-%d.uwaterloo.ca:2520/image?img=%d", i % 3 + 1, n);
+        pthread_create(p_tids + i, NULL, get_files, &in_params);
     }
     for (int i=0; i < t; i++) {
         pthread_join(p_tids[i], NULL);
@@ -450,23 +432,6 @@ int main( int argc, char** argv )
 
     free(p_tids);
 
-    // FILE* fp;
-    // char path[1000];
-
-    // for (int i = 0; i < 50; i ++){
-    //     sprintf(path,"./output_%d.png", i);
-    //     fp = fopen(path, "wb");
-    //     if (fp == NULL) {
-    //         perror("fopen");
-    //         return -2;
-    //     }
-
-    //     if (fwrite(files[i], 1, file_size[i], fp) != file_size[i]) {
-    //         fprintf(stderr, "write_file: imcomplete write!\n");
-    //         return -3;
-    //     }
-    // }
-
     int ret = concat_file();
 
     for (j = 0; j < 50; j++){
@@ -474,7 +439,7 @@ int main( int argc, char** argv )
     }
 
     if (ret != 0) {
-      printf("PNG Concat Failed!");
+        printf("PNG Concat Failed!");
     }
 
     return 0;
