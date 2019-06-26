@@ -73,6 +73,8 @@ typedef struct recv_buf_flat {
 } RECV_BUF;
 
 
+
+
 typedef struct recv_chunk {
     char buf[10000];
     int size;
@@ -239,14 +241,78 @@ int write_file(const char *path, const void *in, size_t len)
 
 
 int main( int argc, char** argv )
-{
+{	
+	/*
     int buf_size = atoi(argv[1]);
+	int num_prod = atoi(argv[2]);
+	int num_con = atoi(argv[3]);
+	int sleep_time = atoi(argv[4]);
+	int num_image = atoi(argv[5]);
+	*/
+	int buf_size = 5;
+	int num_prod = 5;
+	int num_con = 5;
+	int sleep_time = 5;
+	int num_image = 5;
+	
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
 
     void* temp_pointer = shmat(queue_id, NULL, 0);
     queue* queue_pointer = (queue*) temp_pointer;
 
     queue_init(queue_pointer, temp_pointer, buf_size);
-
-
+	
+	/*
+	for (int i = 0; i < queue_pointer -> max_size; i++) {
+		recv_chunk* temp = queue_pointer -> buf + i;
+		printf("seq: %d, size: %d \n", temp -> seq, temp -> size);
+	}
+	*/ 
+	
+	pid_t main_pid;
+	pid_t cpids[num_con + num_prod];
+	int state;
+	
+	for( int i = 0; i < num_con; i++) {
+		
+		main_pid = fork();
+		
+		if ( main_pid > 0 ) {
+			cpids[i] = main_pid;
+		}
+		else if ( main_pid == 0 ) {
+			return 0;
+		}
+		else {
+			perror("fork");
+			exit(3);
+		}
+	}
+	
+	// producers
+	for( int i = num_con; i < num_con + num_prod; i++ ) {
+		
+		main_pid = fork();
+		
+		if ( main_pid > 0 ) {
+			cpids[i] = main_pid;
+		}
+		else if ( main_pid == 0 ){
+			return 0;
+		}
+		else {
+			perror("fork");
+			exit(3);
+		}
+	}
+	
+	// consumers
+	if ( main_pid > 0 ) {
+		for ( int i = 0; i < num_con + num_prod; i++ ) {
+			waitpid(cpids[i], &state, 0);
+			if (WIFEXITED(state)) {
+                printf("Child cpid[%d]=%d terminated with state: %d.\n", i, cpids[i], state);
+            }
+		}
+	}
 }
