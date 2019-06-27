@@ -110,6 +110,11 @@ typedef struct g_vars {
     int next_prod;
 } g_vars;
 
+typedef struct idat_chunk {
+    U8* buf;
+    int size;
+} idat_chunk;
+
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
 size_t write_cb_curl3(char *p_recv, size_t size, size_t nmemb, void *p_userdata);
 int recv_buf_init(RECV_BUF *ptr, size_t max_size);
@@ -118,8 +123,10 @@ int recv_buf_cleanup(RECV_BUF *ptr);
 void queue_init(queue* q, void* start, int buf_size);
 void global_init(g_vars* g, int img, int buf_size);
 void producer(queue* q, g_vars* g);
-void consumer(queue* q, g_vars* g, int time);
+void consumer(queue* q, g_vars* g, idat_chunk* idat_buf, int time);
 void enqueue(queue* q, const void *in, size_t len, int seq);
+void idat_init(idat_chunk* idat_pointer, void* start);
+void concat_image(idat_chunk* idat_pointer, queue* q);
 
 void queue_init(queue* q, void* start, int buf_size) {
     q -> buf = (recv_chunk*) (start + sizeof(queue));
@@ -161,6 +168,12 @@ void enqueue(queue* q, const void *in, size_t len, int seq) {
     curr_chunk -> size = len;
     memcpy(curr_chunk -> buf, in, len);
 }
+
+void idat_init(idat_chunk* idat_pointer, void* start) {
+    idat_pointer -> size = 0;
+    idat_pointer -> buf = (U8*) (start + sizeof(idat_chunk));
+}
+
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata)
 {
     int realsize = size * nmemb;
@@ -310,7 +323,7 @@ void producer(queue* q, g_vars* g) {
     }
 }
 
-void consumer(queue* q, g_vars* g, int time) {
+void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
     while(1) {
         pthread_mutex_lock(&(g -> c_count_mutex));
 
@@ -327,11 +340,102 @@ void consumer(queue* q, g_vars* g, int time) {
         sem_wait(&(g -> full));
 
         recv_chunk* temp = q -> buf + (image_part % q -> max_size);
+
+        U64 idat_length;
+        memcpy(&idat_length, temp -> buf + 33, 4);
+        idat_length = ntohl(idat_length);
+
+        U8 idat_buff[idat_length];
+
+        memcpy(&idat_buff, temp -> buf + 41, idat_length);
+
+        U64 out_length = 0;
+        int ret= 0;
+
+        ret = mem_inf((idat -> buf + idat -> size), &out_length, idat_buff, idat_length);
+
+        if (ret != 0) { /* failure */
+            fprintf(stderr,"mem_inf failed. ret = %d.\n", ret);
+        }
+
+        idat -> size += out_length;
+
         printf("consumed: %d \n", temp -> seq);
         sem_post(&(g -> empty));
 
         usleep(time*1000);
     }
+}
+
+void concat_image(idat_chunk* idat_pointer, queue* q) {
+    int height = ntohl(300);
+
+    U8 compressed_data_buff[(400*4 + 1)* 300];
+    U64 total_compressed_length = 0;
+
+    int new_ret = 0;
+
+    new_ret = mem_def(compressed_data_buff, &total_compressed_length, idat_pointer -> buf, idat_pointer -> size, Z_DEFAULT_COMPRESSION);
+
+    if (new_ret != 0) { /* failure */
+        fprintf(stderr,"mem_inf failed. ret = %d.\n", new_ret);
+    }
+
+    U64 total_compressed_length_out = htonl(total_compressed_length);
+
+    unsigned char header[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    unsigned char ihdr_buffer[25];
+
+    recv_chunk* temp = q -> buf;
+
+    memcpy(&ihdr_buffer, temp -> buf + 8, 25);
+
+    unsigned char iend[4] = {'I', 'E', 'N', 'D'};
+    unsigned char idat[4] = {'I', 'D', 'A', 'T'};
+    unsigned char ihdr_crc_in[17];
+    unsigned char idat_crc_in[total_compressed_length + 4];
+    int ihdr_crc_out;
+    int idat_crc_out;
+    int iend_crc_out;
+    int iend_length = 0;
+
+    /*Create new file all_png */
+    FILE* all_png = fopen("all.png", "wb+");
+
+    /* Write header, iHeader, iData chunks as required into all_png */
+    fwrite(header, 8, 1, all_png);
+    fwrite(ihdr_buffer, 25, 1, all_png);
+
+    fseek(all_png, 20, SEEK_SET);
+    fwrite(&height, 4, 1, all_png);
+
+    fseek(all_png, 12, SEEK_SET);
+    fread(ihdr_crc_in, 17, 1, all_png);
+
+    /* Perform CRC application on type and data fields of ihdr */
+    ihdr_crc_out = htonl(crc(ihdr_crc_in, 17));
+    fwrite(&ihdr_crc_out, 4, 1, all_png);
+
+    fwrite(&total_compressed_length_out, 4, 1, all_png);
+    fwrite(idat, 4, 1, all_png);
+    fwrite(compressed_data_buff, total_compressed_length, 1, all_png);
+
+    fseek(all_png, 37, SEEK_SET);
+    fread(idat_crc_in, total_compressed_length + 4, 1, all_png);
+
+    /* Perform CRC application on type and data fields of IDATA */
+    idat_crc_out = htonl(crc(idat_crc_in, total_compressed_length + 4));
+    fwrite(&idat_crc_out, 4, 1, all_png);
+
+    fwrite(&iend_length, 4, 1, all_png);
+    fwrite(iend, 4, 1, all_png);
+
+    /* Perform CRC application on IEND chunk type and data fields*/
+    iend_crc_out = htonl(crc(iend, 4));
+    fwrite(&iend_crc_out, 4, 1, all_png);
+
+    /* Close completed new png and return */
+    fclose(all_png);
 }
 
 int main( int argc, char** argv )
@@ -346,7 +450,7 @@ int main( int argc, char** argv )
 	int buf_size = 4;
 	int num_prod = 5;
 	int num_con = 5;
-	int sleep_time = 1000;
+	int sleep_time = 0;
 	int image_num = 1;
 
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
@@ -358,6 +462,11 @@ int main( int argc, char** argv )
 	void* global_temp = shmat(global_id, NULL, 0);
 	g_vars* var_pointer = (g_vars*) global_temp;
 	global_init(var_pointer, image_num, buf_size);
+
+    int idat_id = shmget(IPC_PRIVATE, sizeof(idat_chunk) + (400*4 + 1)* 300 , IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+    void* idat_temp = shmat(idat_id, NULL, 0);
+    idat_chunk* idat_buf = (idat_chunk*) idat_temp;
+    idat_init(idat_buf, idat_temp);
 
 	pid_t main_pid;
 	pid_t cpids[num_con + num_prod];
@@ -372,7 +481,7 @@ int main( int argc, char** argv )
 			cpids[i] = main_pid;
 		}
 		else if ( main_pid == 0 ) {
-            consumer(queue_pointer, var_pointer, sleep_time);
+            consumer(queue_pointer, var_pointer, idat_buf, sleep_time);
 			return 0;
 		}
 		else {
@@ -414,16 +523,22 @@ int main( int argc, char** argv )
         //     printf("seq: %d, size: %ld \n", temp -> seq, temp -> size);
         // }
 
+        concat_image(idat_buf, queue_pointer);
+
         pthread_mutex_destroy(&(var_pointer -> p_count_mutex));
         pthread_mutex_destroy(&(var_pointer -> c_count_mutex));
         pthread_mutex_destroy(&(var_pointer -> queue_mutex));
         sem_destroy(&(var_pointer -> empty));
         sem_destroy(&(var_pointer -> full));
+
         shmdt(temp_pointer);
         shmctl(queue_id, IPC_RMID, NULL);
 
         shmdt(global_temp);
         shmctl(global_id, IPC_RMID, NULL);
+
+        shmdt(idat_temp);
+        shmctl(idat_id, IPC_RMID, NULL);
 	}
 
 	return 0;
