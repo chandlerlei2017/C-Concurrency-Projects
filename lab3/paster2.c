@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <semaphore.h>
+#include <pthread.h>
 
 #define IMG_URL "http://ece252-1.uwaterloo.ca:2530/image?img=1&part=20"
 #define DUM_URL "https://example.com/"
@@ -72,9 +73,6 @@ typedef struct recv_buf_flat {
                      /* <0 indicates an invalid seq number */
 } RECV_BUF;
 
-
-
-
 typedef struct recv_chunk {
     char buf[10000];
     int size;
@@ -89,6 +87,12 @@ typedef struct queue {
     int back;
 } queue;
 
+typedef struct g_vars {
+	int num_pics;
+	pthread_mutex_t count_mutex;
+	pthread_mutex_t queue_mutex;
+} g_vars;
+
 
 
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
@@ -97,8 +101,8 @@ int recv_buf_init(RECV_BUF *ptr, size_t max_size);
 int recv_buf_cleanup(RECV_BUF *ptr);
 int write_file(const char *path, const void *in, size_t len);
 void queue_init(queue* q, void* start, int buf_size);
-
-
+void global_init(g_vars* g);
+void producer(queue* q, g_vars* g);
 
 void queue_init(queue* q, void* start, int buf_size) {
     q -> buf = (recv_chunk*) (start + sizeof(queue));
@@ -113,6 +117,26 @@ void queue_init(queue* q, void* start, int buf_size) {
         temp_recv -> size = 0;
         temp_recv -> seq = -1;
     }
+}
+
+void global_init(g_vars* g) {
+	g -> num_pics = 0;
+	pthread_mutex_init(&(g -> count_mutex), NULL);
+	pthread_mutex_init(&(g -> queue_mutex), NULL);
+}
+
+void producer(queue* q, g_vars* g) {
+	while(1){
+		pthread_mutex_lock(&(g -> count_mutex));
+		int imageNum = g -> num_pics;
+		
+		if (imageNum == 50) {
+			pthread_mutex_unlock(&(g -> count_mutex));
+			break;
+		}
+		(g -> num_pics)++;
+		pthread_mutex_unlock(&(g -> count_mutex));
+	}
 }
 
 /**
@@ -256,11 +280,14 @@ int main( int argc, char** argv )
 	int num_image = 5;
 	
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
-
     void* temp_pointer = shmat(queue_id, NULL, 0);
     queue* queue_pointer = (queue*) temp_pointer;
-
     queue_init(queue_pointer, temp_pointer, buf_size);
+	
+	int global_id = shmget(IPC_PRIVATE, sizeof(g_vars), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
+	void* global_temp = shmat(global_id, NULL, 0);
+	g_vars* var_pointer = (g_vars*) global_temp;
+	global_init(var_pointer);
 	
 	/*
 	for (int i = 0; i < queue_pointer -> max_size; i++) {
@@ -273,6 +300,7 @@ int main( int argc, char** argv )
 	pid_t cpids[num_con + num_prod];
 	int state;
 	
+	// consumers
 	for( int i = 0; i < num_con; i++) {
 		
 		main_pid = fork();
@@ -306,7 +334,7 @@ int main( int argc, char** argv )
 		}
 	}
 	
-	// consumers
+	// parent
 	if ( main_pid > 0 ) {
 		for ( int i = 0; i < num_con + num_prod; i++ ) {
 			waitpid(cpids[i], &state, 0);
@@ -315,4 +343,6 @@ int main( int argc, char** argv )
             }
 		}
 	}
+	
+	return 0;
 }
