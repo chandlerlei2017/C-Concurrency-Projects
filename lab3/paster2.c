@@ -349,8 +349,6 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
         while (temp -> seq != g -> next_cons){
         }
 
-        pthread_mutex_lock(&(g -> idat_mutex));
-
         U64 idat_length;
         memcpy(&idat_length, temp -> buf + 33, 4);
         idat_length = ntohl(idat_length);
@@ -362,6 +360,8 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
         U64 out_length = 0;
         int ret= 0;
 
+        pthread_mutex_lock(&(g -> idat_mutex));
+
         ret = mem_inf((idat -> buf + idat -> size), &out_length, idat_buff, idat_length);
 
         if (ret != 0) { /* failure */
@@ -370,6 +370,7 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 
         idat -> size += out_length;
         (g -> next_cons)++;
+
         pthread_mutex_unlock(&(g -> idat_mutex));
 
         printf("consumed: %d \n", temp -> seq);
@@ -463,7 +464,7 @@ int main( int argc, char** argv )
 	int num_prod = 5;
 	int num_con = 5;
 	int sleep_time = 800;
-	int image_num = 3;
+	int image_num = 2;
 
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     void* temp_pointer = shmat(queue_id, NULL, 0);
