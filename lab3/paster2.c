@@ -1,29 +1,3 @@
-/*
- * The code is derived from cURL example and paster.c base code.
- * The cURL example is at URL:
- * https://curl.haxx.se/libcurl/c/getinmemory.html
- * Copyright (C) 1998 - 2018, Daniel Stenberg, <daniel@haxx.se>, et al..
- *
- * The paster.c code is
- * Copyright 2013 Patrick Lam, <p23lam@uwaterloo.ca>.
- *
- * Modifications to the code are
- * Copyright 2018-2019, Yiqing Huang, <yqhuang@uwaterloo.ca>.
- *
- * This software may be freely redistributed under the terms of the X11 license.
- */
-
-/**
- * @file main.c
- * @brief cURL write call back to save received data in a shared memory first
- *        and then write the data to a file for verification purpose.
- *        cURL header call back extracts data sequence number from header.
- * @see https://curl.haxx.se/libcurl/c/getinmemory.html
- * @see https://curl.haxx.se/libcurl/using/
- * @see https://ec.haxx.se/callback-write.html
- * NOTE: we assume each image segment from the server is less than 10K
- */
-
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
@@ -52,30 +26,6 @@
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
 
-/* This is a flattened structure, buf points to
-   the memory address immediately after
-   the last member field (i.e. seq) in the structure.
-   Here is the memory layout.
-   Note that the memory is a chunk of continuous bytes.
-
-   +================+
-   | buf            | 8 bytes
-   +----------------+
-   | size           | 4 bytes
-   +----------------+
-   | max_size       | 4 bytes
-   +----------------+
-   | seq            | 4 bytes
-   +----------------+
-   | buf[0]         | 1 byte
-   +----------------+
-   | buf[1]         | 1 byte
-   +----------------+
-   + ...            | 1 byte
-   +----------------+
-   + buf[max_size-1]| 1 byte
-   +================+
-*/
 typedef struct recv_buf2 {
     char *buf;       /* memory to hold a copy of received data */
     size_t size;     /* size of valid data in buf in bytes*/
@@ -453,18 +403,18 @@ void concat_image(idat_chunk* idat_pointer, queue* q) {
 
 int main( int argc, char** argv )
 {
-	/*
+
     int buf_size = atoi(argv[1]);
 	int num_prod = atoi(argv[2]);
 	int num_con = atoi(argv[3]);
 	int sleep_time = atoi(argv[4]);
-	int num_image = atoi(argv[5]);
-	*/
-	int buf_size = 5;
-	int num_prod = 5;
-	int num_con = 5;
-	int sleep_time = 800;
-	int image_num = 2;
+	int image_num = atoi(argv[5]);
+
+	// int buf_size = 5;
+	// int num_prod = 5;
+	// int num_con = 5;
+	// int sleep_time = 10;
+	// int image_num = 1;
 
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     void* temp_pointer = shmat(queue_id, NULL, 0);
@@ -503,6 +453,15 @@ int main( int argc, char** argv )
 		}
 		else if ( main_pid == 0 ) {
             consumer(queue_pointer, var_pointer, idat_buf, sleep_time);
+
+            shmdt(temp_pointer);
+            shmctl(queue_id, IPC_RMID, NULL);
+
+            shmdt(global_temp);
+            shmctl(global_id, IPC_RMID, NULL);
+
+            shmdt(idat_temp);
+            shmctl(idat_id, IPC_RMID, NULL);
 			return 0;
 		}
 		else {
@@ -521,6 +480,15 @@ int main( int argc, char** argv )
 		}
 		else if ( main_pid == 0 ) {
             producer(queue_pointer, var_pointer);
+
+            shmdt(temp_pointer);
+            shmctl(queue_id, IPC_RMID, NULL);
+
+            shmdt(global_temp);
+            shmctl(global_id, IPC_RMID, NULL);
+
+            shmdt(idat_temp);
+            shmctl(idat_id, IPC_RMID, NULL);
 			return 0;
 		}
 		else {
