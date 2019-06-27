@@ -25,6 +25,7 @@
  */
 
 #include <stdio.h>
+#include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -35,6 +36,8 @@
 #include <sys/wait.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include "zutil.h"
+#include "crc.h"
 
 #define IMG_URL "http://ece252-1.uwaterloo.ca:2530/image?img=1&part=20"
 #define DUM_URL "https://example.com/"
@@ -75,8 +78,10 @@ typedef struct recv_buf_flat {
 
 typedef struct recv_chunk {
     char buf[10000];
-    int size;
+    size_t size;
+	size_t max_size;
     int seq;
+	
 } recv_chunk;
 
 typedef struct queue {
@@ -98,7 +103,7 @@ typedef struct g_vars {
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
 size_t write_cb_curl(char *p_recv, size_t size, size_t nmemb, void *p_userdata);
 int recv_buf_init(RECV_BUF *ptr, size_t max_size);
-int recv_buf_cleanup(RECV_BUF *ptr);
+int recv_buf_cleanup(recv_chunk *ptr);
 int write_file(const char *path, const void *in, size_t len);
 void queue_init(queue* q, void* start, int buf_size);
 void global_init(g_vars* g);
@@ -126,7 +131,13 @@ void global_init(g_vars* g) {
 }
 
 void producer(queue* q, g_vars* g) {
+	CURL *curl_handle;
+	CURLcode res;
+	char url[256];
+	recv_chunk img_chunk;
+		
 	while(1){
+		shm_recv_buf_init(&img_chunk, BUF_SIZE);
 		pthread_mutex_lock(&(g -> count_mutex));
 		int imageNum = g -> num_pics;
 		
@@ -135,7 +146,45 @@ void producer(queue* q, g_vars* g) {
 			break;
 		}
 		(g -> num_pics)++;
-		pthread_mutex_unlock(&(g -> count_mutex));
+		pthread_mutex_unlock(&(g -> count_mutex));	
+		
+		curl_global_init(CURL_GLOBAL_DEFAULT);
+		curl_handle = curl_easy_init();
+		
+		if (curl_handle == NULL) {
+          fprintf(stderr, "curl_easy_init: returned NULL\n");
+		}
+		
+		/* specify URL to get */
+	    curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+
+	    /* register write call back function to process received data */
+	    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_cb_curl);
+	    /* user defined data structure passed to the call back function */
+	    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&img_chunk);
+
+	    /* register header call back function to process received header data */
+	    curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, header_cb_curl);
+	    /* user defined data structure passed to the call back function */
+	    curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *)&img_chunk);
+
+	    /* some servers requires a user-agent field */
+	    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+
+
+	    /* get it! */
+	    res = curl_easy_perform(curl_handle);
+
+	    if( res != CURLE_OK) {
+		  fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+	    }
+
+	    //write_file(img_chunk.seq, img_chunk.buf, img_chunk.size, p_in -> count);
+
+	    /* cleaning up */
+	    curl_easy_cleanup(curl_handle);
+    	curl_global_cleanup();
+	    recv_buf_cleanup(&img_chunk);
 	}
 }
 
@@ -156,7 +205,7 @@ void producer(queue* q, g_vars* g) {
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata)
 {
     int realsize = size * nmemb;
-    RECV_BUF *p = userdata;
+    recv_chunk *p = userdata;
 
     if (realsize > strlen(ECE252_HEADER) &&
 	strncmp(p_recv, ECE252_HEADER, strlen(ECE252_HEADER)) == 0) {
@@ -182,7 +231,7 @@ size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata)
 size_t write_cb_curl(char *p_recv, size_t size, size_t nmemb, void *p_userdata)
 {
     size_t realsize = size * nmemb;
-    RECV_BUF *p = (RECV_BUF *)p_userdata;
+    recv_chunk *p = (recv_chunk *)p_userdata;
 
     if (p->size + realsize + 1 > p->max_size) {/* hope this rarely happens */
         fprintf(stderr, "User buffer is too small, abort...\n");
@@ -225,6 +274,18 @@ int shm_recv_buf_init(RECV_BUF *ptr, size_t nbytes)
     ptr->max_size = nbytes;
     ptr->seq = -1;              /* valid seq should be non-negative */
 
+    return 0;
+}
+
+int recv_buf_cleanup(recv_chunk *ptr)
+{
+    if (ptr == NULL) {
+	return 1;
+    }
+
+    free(ptr->buf);
+    ptr->size = 0;
+    ptr->max_size = 0;
     return 0;
 }
 
