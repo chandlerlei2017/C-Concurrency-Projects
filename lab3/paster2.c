@@ -36,6 +36,7 @@
 #include <sys/wait.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <time.h>
 #include "zutil.h"
 #include "crc.h"
 
@@ -98,11 +99,15 @@ typedef struct queue {
 } queue;
 
 typedef struct g_vars {
-    pthread_mutex_t count_mutex;
+    pthread_mutex_t p_count_mutex;
+    pthread_mutex_t c_count_mutex;
 	pthread_mutex_t queue_mutex;
-	int num_pics;
+    sem_t empty;
+    sem_t full;
+	int pics_prod;
+    int pics_cons;
     int image_num;
-    int next_image;
+    int next_prod;
 } g_vars;
 
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
@@ -111,8 +116,9 @@ int recv_buf_init(RECV_BUF *ptr, size_t max_size);
 int recv_buf_cleanup(RECV_BUF *ptr);
 
 void queue_init(queue* q, void* start, int buf_size);
-void global_init(g_vars* g, int img);
+void global_init(g_vars* g, int img, int buf_size);
 void producer(queue* q, g_vars* g);
+void consumer(queue* q, g_vars* g, int time);
 void enqueue(queue* q, const void *in, size_t len, int seq);
 
 void queue_init(queue* q, void* start, int buf_size) {
@@ -130,12 +136,16 @@ void queue_init(queue* q, void* start, int buf_size) {
     }
 }
 
-void global_init(g_vars* g, int img) {
-	g -> num_pics = 0;
+void global_init(g_vars* g, int img, int buf_size) {
+	g -> pics_prod = 0;
+    g -> pics_cons = 0;
     g -> image_num = img;
-    g -> next_image = 0;
-	pthread_mutex_init(&(g -> count_mutex), NULL);
+    g -> next_prod = 0;
+	pthread_mutex_init(&(g -> p_count_mutex), NULL);
+    pthread_mutex_init(&(g -> c_count_mutex), NULL);
 	pthread_mutex_init(&(g -> queue_mutex), NULL);
+    sem_init(&(g -> empty), 1, buf_size);
+    sem_init(&(g -> full), 1, 0);
 }
 void enqueue(queue* q, const void *in, size_t len, int seq) {
     if (q -> curr_size != q -> max_size) {
@@ -229,18 +239,20 @@ void producer(queue* q, g_vars* g) {
     char url[256];
     RECV_BUF recv_buf;
 
-	while(1){
-		pthread_mutex_lock(&(g -> count_mutex));
+	while(1) {
+		pthread_mutex_lock(&(g -> p_count_mutex));
 
-		int image_part = g -> num_pics;
+		int image_part = g -> pics_prod;
 
 		if (image_part == 50) {
-			pthread_mutex_unlock(&(g -> count_mutex));
+			pthread_mutex_unlock(&(g -> p_count_mutex));
 			break;
 		}
-		(g -> num_pics)++;
+		(g -> pics_prod)++;
 
-		pthread_mutex_unlock(&(g -> count_mutex));
+		pthread_mutex_unlock(&(g -> p_count_mutex));
+
+        sem_wait(&(g -> empty));
 
         sprintf(url, "http://ece252-%d.uwaterloo.ca:2530/image?img=%d&part=%d", image_part % 3 + 1, g -> image_num, image_part);
         recv_buf_init(&recv_buf, BUF_SIZE);
@@ -278,16 +290,14 @@ void producer(queue* q, g_vars* g) {
         }
 
         // Write to queue
-        while(g -> next_image != recv_buf.seq) {
-
+        while(g -> next_prod != recv_buf.seq) {
         }
-
         pthread_mutex_lock(&(g -> queue_mutex));
 
-        printf("image num: %d \n", recv_buf.seq);
-
         enqueue(q, recv_buf.buf, recv_buf.size, recv_buf.seq);
-        (g -> next_image)++;
+        printf("produced: %d \n", recv_buf.seq);
+
+        (g -> next_prod)++;
 
         pthread_mutex_unlock(&(g -> queue_mutex));
 
@@ -295,6 +305,32 @@ void producer(queue* q, g_vars* g) {
         curl_easy_cleanup(curl_handle);
         curl_global_cleanup();
         recv_buf_cleanup(&recv_buf);
+
+        sem_post(&(g -> full));
+    }
+}
+
+void consumer(queue* q, g_vars* g, int time) {
+    while(1) {
+        pthread_mutex_lock(&(g -> c_count_mutex));
+
+		int image_part = g -> pics_cons;
+
+		if (image_part == 50) {
+			pthread_mutex_unlock(&(g -> c_count_mutex));
+			break;
+		}
+		(g -> pics_cons)++;
+
+		pthread_mutex_unlock(&(g -> c_count_mutex));
+
+        sem_wait(&(g -> full));
+
+        recv_chunk* temp = q -> buf + (image_part % q -> max_size);
+        printf("consumed: %d \n", temp -> seq);
+        sem_post(&(g -> empty));
+
+        usleep(time*1000);
     }
 }
 
@@ -310,7 +346,7 @@ int main( int argc, char** argv )
 	int buf_size = 4;
 	int num_prod = 5;
 	int num_con = 5;
-	int sleep_time = 5;
+	int sleep_time = 1000;
 	int image_num = 1;
 
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
@@ -321,7 +357,7 @@ int main( int argc, char** argv )
 	int global_id = shmget(IPC_PRIVATE, sizeof(g_vars), IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
 	void* global_temp = shmat(global_id, NULL, 0);
 	g_vars* var_pointer = (g_vars*) global_temp;
-	global_init(var_pointer, image_num);
+	global_init(var_pointer, image_num, buf_size);
 
 	pid_t main_pid;
 	pid_t cpids[num_con + num_prod];
@@ -336,6 +372,7 @@ int main( int argc, char** argv )
 			cpids[i] = main_pid;
 		}
 		else if ( main_pid == 0 ) {
+            consumer(queue_pointer, var_pointer, sleep_time);
 			return 0;
 		}
 		else {
@@ -377,9 +414,11 @@ int main( int argc, char** argv )
         //     printf("seq: %d, size: %ld \n", temp -> seq, temp -> size);
         // }
 
-        pthread_mutex_destroy(&(var_pointer -> count_mutex));
+        pthread_mutex_destroy(&(var_pointer -> p_count_mutex));
+        pthread_mutex_destroy(&(var_pointer -> c_count_mutex));
         pthread_mutex_destroy(&(var_pointer -> queue_mutex));
-
+        sem_destroy(&(var_pointer -> empty));
+        sem_destroy(&(var_pointer -> full));
         shmdt(temp_pointer);
         shmctl(queue_id, IPC_RMID, NULL);
 
