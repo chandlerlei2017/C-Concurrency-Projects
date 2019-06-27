@@ -37,6 +37,7 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <time.h>
+#include <sys/time.h>
 #include "zutil.h"
 #include "crc.h"
 
@@ -343,6 +344,7 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 		pthread_mutex_unlock(&(g -> c_count_mutex));
 
         sem_wait(&(g -> full));
+        usleep(time*1000);
 
         recv_chunk* temp = q -> buf + (image_part % q -> max_size);
 
@@ -375,8 +377,6 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 
         printf("consumed: %d \n", temp -> seq);
         sem_post(&(g -> empty));
-
-        usleep(time*1000);
     }
 }
 
@@ -460,7 +460,7 @@ int main( int argc, char** argv )
 	int sleep_time = atoi(argv[4]);
 	int num_image = atoi(argv[5]);
 	*/
-	int buf_size = 4;
+	int buf_size = 5;
 	int num_prod = 5;
 	int num_con = 5;
 	int sleep_time = 800;
@@ -484,6 +484,14 @@ int main( int argc, char** argv )
 	pid_t main_pid;
 	pid_t cpids[num_con + num_prod];
 	int state;
+    double times[2];
+    struct timeval tv;
+
+    if (gettimeofday(&tv, NULL) != 0) {
+        perror("gettimeofday");
+        abort();
+    }
+    times[0] = (tv.tv_sec) + tv.tv_usec/1000000.;
 
 	// consumers
 	for( int i = 0; i < num_con; i++) {
@@ -538,9 +546,16 @@ int main( int argc, char** argv )
 
         concat_image(idat_buf, queue_pointer);
 
+        if (gettimeofday(&tv, NULL) != 0) {
+            perror("gettimeofday");
+            abort();
+        }
+        times[1] = (tv.tv_sec) + tv.tv_usec/1000000.;
+
         pthread_mutex_destroy(&(var_pointer -> p_count_mutex));
         pthread_mutex_destroy(&(var_pointer -> c_count_mutex));
         pthread_mutex_destroy(&(var_pointer -> queue_mutex));
+        pthread_mutex_destroy(&(var_pointer -> idat_mutex));
         sem_destroy(&(var_pointer -> empty));
         sem_destroy(&(var_pointer -> full));
 
@@ -552,6 +567,8 @@ int main( int argc, char** argv )
 
         shmdt(idat_temp);
         shmctl(idat_id, IPC_RMID, NULL);
+
+        printf("paster2 execution time: %.6lf seconds\n",  times[1] - times[0]);
 	}
 
 	return 0;
