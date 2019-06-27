@@ -85,7 +85,6 @@ typedef struct recv_buf2 {
 typedef struct recv_chunk {
     char buf[10000];
     size_t size;
-	size_t max_size;
     int seq;
 
 } recv_chunk;
@@ -99,30 +98,31 @@ typedef struct queue {
 } queue;
 
 typedef struct g_vars {
+    pthread_mutex_t count_mutex;
+	pthread_mutex_t queue_mutex;
 	int num_pics;
     int image_num;
-	pthread_mutex_t count_mutex;
-	pthread_mutex_t queue_mutex;
+    int next_image;
 } g_vars;
 
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
 size_t write_cb_curl3(char *p_recv, size_t size, size_t nmemb, void *p_userdata);
 int recv_buf_init(RECV_BUF *ptr, size_t max_size);
 int recv_buf_cleanup(RECV_BUF *ptr);
-int write_file(int seq, const void *in, size_t len, int* count);
 
 void queue_init(queue* q, void* start, int buf_size);
 void global_init(g_vars* g, int img);
 void producer(queue* q, g_vars* g);
+void enqueue(queue* q, const void *in, size_t len, int seq);
 
 void queue_init(queue* q, void* start, int buf_size) {
     q -> buf = (recv_chunk*) (start + sizeof(queue));
     q -> curr_size = 0;
     q -> max_size = buf_size;
     q -> front = 0;
-    q -> back = 0;
+    q -> back = -1;
 
-    // Init eac
+    // Init each recv chunk
     for (int i = 0; i < buf_size; i++) {
         recv_chunk* temp_recv = q -> buf + i;
         temp_recv -> size = 0;
@@ -133,10 +133,24 @@ void queue_init(queue* q, void* start, int buf_size) {
 void global_init(g_vars* g, int img) {
 	g -> num_pics = 0;
     g -> image_num = img;
+    g -> next_image = 0;
 	pthread_mutex_init(&(g -> count_mutex), NULL);
 	pthread_mutex_init(&(g -> queue_mutex), NULL);
 }
+void enqueue(queue* q, const void *in, size_t len, int seq) {
+    if (q -> curr_size != q -> max_size) {
+        (q -> curr_size)++;
+    }
+    else {
+        (q -> front) = (q -> front + 1) % q -> max_size;
+    }
+    q -> back = (q -> back + 1) % q -> max_size;
 
+    recv_chunk* curr_chunk = q -> buf + q -> back;
+    curr_chunk -> seq = seq;
+    curr_chunk -> size = len;
+    memcpy(curr_chunk -> buf, in, len);
+}
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata)
 {
     int realsize = size * nmemb;
@@ -263,18 +277,25 @@ void producer(queue* q, g_vars* g) {
             fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
         }
 
+        // Write to queue
+        while(g -> next_image != recv_buf.seq) {
+
+        }
+
+        pthread_mutex_lock(&(g -> queue_mutex));
+
         printf("image num: %d \n", recv_buf.seq);
+
+        enqueue(q, recv_buf.buf, recv_buf.size, recv_buf.seq);
+        (g -> next_image)++;
+
+        pthread_mutex_unlock(&(g -> queue_mutex));
 
         /* cleaning up */
         curl_easy_cleanup(curl_handle);
         curl_global_cleanup();
         recv_buf_cleanup(&recv_buf);
     }
-}
-
-int write_file(int seq, const void *in, size_t len, int* count)
-{
-    return 0;
 }
 
 int main( int argc, char** argv )
@@ -286,7 +307,7 @@ int main( int argc, char** argv )
 	int sleep_time = atoi(argv[4]);
 	int num_image = atoi(argv[5]);
 	*/
-	int buf_size = 5;
+	int buf_size = 4;
 	int num_prod = 5;
 	int num_con = 5;
 	int sleep_time = 5;
@@ -301,13 +322,6 @@ int main( int argc, char** argv )
 	void* global_temp = shmat(global_id, NULL, 0);
 	g_vars* var_pointer = (g_vars*) global_temp;
 	global_init(var_pointer, image_num);
-
-	/*
-	for (int i = 0; i < queue_pointer -> max_size; i++) {
-		recv_chunk* temp = queue_pointer -> buf + i;
-		printf("seq: %d, size: %d \n", temp -> seq, temp -> size);
-	}
-	*/
 
 	pid_t main_pid;
 	pid_t cpids[num_con + num_prod];
@@ -356,6 +370,21 @@ int main( int argc, char** argv )
                 printf("Child cpid[%d]=%d terminated with state: %d.\n", i, cpids[i], state);
             }
 		}
+
+        // printf("front:%d back: %d\n", queue_pointer -> front, queue_pointer -> back);
+        // for (int i = 0; i < queue_pointer -> max_size; i++) {
+        //     recv_chunk* temp = queue_pointer -> buf + i;
+        //     printf("seq: %d, size: %ld \n", temp -> seq, temp -> size);
+        // }
+
+        pthread_mutex_destroy(&(var_pointer -> count_mutex));
+        pthread_mutex_destroy(&(var_pointer -> queue_mutex));
+
+        shmdt(temp_pointer);
+        shmctl(queue_id, IPC_RMID, NULL);
+
+        shmdt(global_temp);
+        shmctl(global_id, IPC_RMID, NULL);
 	}
 
 	return 0;
