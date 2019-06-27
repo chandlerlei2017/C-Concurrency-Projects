@@ -102,12 +102,14 @@ typedef struct g_vars {
     pthread_mutex_t p_count_mutex;
     pthread_mutex_t c_count_mutex;
 	pthread_mutex_t queue_mutex;
+    pthread_mutex_t idat_mutex;
     sem_t empty;
     sem_t full;
 	int pics_prod;
     int pics_cons;
     int image_num;
     int next_prod;
+    int next_cons;
 } g_vars;
 
 typedef struct idat_chunk {
@@ -148,9 +150,11 @@ void global_init(g_vars* g, int img, int buf_size) {
     g -> pics_cons = 0;
     g -> image_num = img;
     g -> next_prod = 0;
+    g->  next_cons = 0;
 	pthread_mutex_init(&(g -> p_count_mutex), NULL);
     pthread_mutex_init(&(g -> c_count_mutex), NULL);
 	pthread_mutex_init(&(g -> queue_mutex), NULL);
+    pthread_mutex_init(&(g -> idat_mutex), NULL);
     sem_init(&(g -> empty), 1, buf_size);
     sem_init(&(g -> full), 1, 0);
 }
@@ -305,6 +309,7 @@ void producer(queue* q, g_vars* g) {
         // Write to queue
         while(g -> next_prod != recv_buf.seq) {
         }
+
         pthread_mutex_lock(&(g -> queue_mutex));
 
         enqueue(q, recv_buf.buf, recv_buf.size, recv_buf.seq);
@@ -341,6 +346,11 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 
         recv_chunk* temp = q -> buf + (image_part % q -> max_size);
 
+        while (temp -> seq != g -> next_cons){
+        }
+
+        pthread_mutex_lock(&(g -> idat_mutex));
+
         U64 idat_length;
         memcpy(&idat_length, temp -> buf + 33, 4);
         idat_length = ntohl(idat_length);
@@ -359,6 +369,8 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
         }
 
         idat -> size += out_length;
+        (g -> next_cons)++;
+        pthread_mutex_unlock(&(g -> idat_mutex));
 
         printf("consumed: %d \n", temp -> seq);
         sem_post(&(g -> empty));
@@ -450,8 +462,8 @@ int main( int argc, char** argv )
 	int buf_size = 4;
 	int num_prod = 5;
 	int num_con = 5;
-	int sleep_time = 0;
-	int image_num = 1;
+	int sleep_time = 800;
+	int image_num = 3;
 
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     void* temp_pointer = shmat(queue_id, NULL, 0);
