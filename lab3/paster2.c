@@ -215,7 +215,7 @@ void producer(queue* q, g_vars* g) {
 
 		pthread_mutex_unlock(&(g -> p_count_mutex));
 
-        if (g -> pics_prod > 49) {
+        if (image_part > 49) {
             break;
         }
         else {
@@ -288,7 +288,7 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 
 		pthread_mutex_unlock(&(g -> c_count_mutex));
 
-        if(g -> pics_cons > 49) {
+        if(image_part > 49) {
             break;
         }
         else {
