@@ -215,7 +215,7 @@ void producer(queue* q, g_vars* g) {
 
 		pthread_mutex_unlock(&(g -> p_count_mutex));
 
-        if (g -> pics_prod > 49 ) {
+        if (g -> pics_prod > 49) {
             break;
         }
         else {
