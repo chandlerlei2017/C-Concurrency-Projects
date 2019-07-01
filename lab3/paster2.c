@@ -211,16 +211,16 @@ void producer(queue* q, g_vars* g) {
 		pthread_mutex_lock(&(g -> p_count_mutex));
 
 		int image_part = g -> pics_prod;
-
-		if (image_part == 50) {
-			pthread_mutex_unlock(&(g -> p_count_mutex));
-			break;
-		}
 		(g -> pics_prod)++;
 
 		pthread_mutex_unlock(&(g -> p_count_mutex));
 
-        sem_wait(&(g -> empty));
+        if (g -> pics_prod > 49 ) {
+            break;
+        }
+        else {
+            sem_wait(&(g -> empty));
+        }
 
         sprintf(url, "http://ece252-%d.uwaterloo.ca:2530/image?img=%d&part=%d", image_part % 3 + 1, g -> image_num, image_part);
         recv_buf_init(&recv_buf, BUF_SIZE);
@@ -284,17 +284,17 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
         pthread_mutex_lock(&(g -> c_count_mutex));
 
 		int image_part = g -> pics_cons;
-
-		if (image_part == 50) {
-			pthread_mutex_unlock(&(g -> c_count_mutex));
-			break;
-		}
 		(g -> pics_cons)++;
 
 		pthread_mutex_unlock(&(g -> c_count_mutex));
 
-        sem_wait(&(g -> full));
-        usleep(time*1000);
+        if(g -> pics_cons > 49) {
+            break;
+        }
+        else {
+            sem_wait(&(g -> full));
+            usleep(time*1000);
+        }
 
         recv_chunk* temp = q -> buf + (image_part % q -> max_size);
 
@@ -444,7 +444,7 @@ int main( int argc, char** argv )
     times[0] = (tv.tv_sec) + tv.tv_usec/1000000.;
 
 	// consumers
-	for( int i = 0; i < num_con; i++) {
+	for( int i = 0; i < num_prod; i++) {
 
 		main_pid = fork();
 
@@ -452,7 +452,7 @@ int main( int argc, char** argv )
 			cpids[i] = main_pid;
 		}
 		else if ( main_pid == 0 ) {
-            consumer(queue_pointer, var_pointer, idat_buf, sleep_time);
+            producer(queue_pointer, var_pointer);
 
             shmdt(temp_pointer);
             shmctl(queue_id, IPC_RMID, NULL);
@@ -471,7 +471,7 @@ int main( int argc, char** argv )
 	}
 
 	// producers
-	for( int i = num_con; i < num_con + num_prod; i++ ) {
+	for( int i = num_prod; i < num_con + num_prod; i++ ) {
 
 		main_pid = fork();
 
@@ -479,7 +479,7 @@ int main( int argc, char** argv )
 			cpids[i] = main_pid;
 		}
 		else if ( main_pid == 0 ) {
-            producer(queue_pointer, var_pointer);
+            consumer(queue_pointer, var_pointer, idat_buf, sleep_time);
 
             shmdt(temp_pointer);
             shmctl(queue_id, IPC_RMID, NULL);
