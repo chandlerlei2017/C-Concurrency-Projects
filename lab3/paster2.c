@@ -298,7 +298,7 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 
         recv_chunk* temp = q -> buf + (image_part % q -> max_size);
 
-        while (temp -> seq == -1){
+        while (temp -> seq != g -> next_cons){
         }
 
         U64 idat_length;
@@ -314,13 +314,14 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 
         pthread_mutex_lock(&(g -> idat_mutex));
 
-        ret = mem_inf((idat -> buf + (temp -> seq) * 9606), &out_length, idat_buff, idat_length);
+        ret = mem_inf((idat -> buf + idat -> size), &out_length, idat_buff, idat_length);
 
         if (ret != 0) { /* failure */
             fprintf(stderr,"mem_inf failed. ret = %d.\n", ret);
         }
 
         idat -> size += out_length;
+        (g -> next_cons)++;
 
         pthread_mutex_unlock(&(g -> idat_mutex));
 
@@ -408,6 +409,12 @@ int main( int argc, char** argv )
 	int num_con = atoi(argv[3]);
 	int sleep_time = atoi(argv[4]);
 	int image_num = atoi(argv[5]);
+
+	// int buf_size = 5;
+	// int num_prod = 5;
+	// int num_con = 5;
+	// int sleep_time = 10;
+	// int image_num = 1;
 
     int queue_id = shmget(IPC_PRIVATE, sizeof(queue) + sizeof(recv_chunk)*buf_size, IPC_CREAT | IPC_EXCL | S_IRUSR | S_IWUSR);
     void* temp_pointer = shmat(queue_id, NULL, 0);
