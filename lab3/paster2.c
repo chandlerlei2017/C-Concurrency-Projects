@@ -443,7 +443,7 @@ int main( int argc, char** argv )
     }
     times[0] = (tv.tv_sec) + tv.tv_usec/1000000.;
 
-	// consumers
+	// producers
 	for( int i = 0; i < num_prod; i++) {
 
 		main_pid = fork();
@@ -455,13 +455,8 @@ int main( int argc, char** argv )
             producer(queue_pointer, var_pointer);
 
             shmdt(temp_pointer);
-            shmctl(queue_id, IPC_RMID, NULL);
-
             shmdt(global_temp);
-            shmctl(global_id, IPC_RMID, NULL);
-
             shmdt(idat_temp);
-            shmctl(idat_id, IPC_RMID, NULL);
 			return 0;
 		}
 		else {
@@ -470,7 +465,7 @@ int main( int argc, char** argv )
 		}
 	}
 
-	// producers
+	// consumers
 	for( int i = num_prod; i < num_con + num_prod; i++ ) {
 
 		main_pid = fork();
@@ -482,13 +477,8 @@ int main( int argc, char** argv )
             consumer(queue_pointer, var_pointer, idat_buf, sleep_time);
 
             shmdt(temp_pointer);
-            shmctl(queue_id, IPC_RMID, NULL);
-
             shmdt(global_temp);
-            shmctl(global_id, IPC_RMID, NULL);
-
             shmdt(idat_temp);
-            shmctl(idat_id, IPC_RMID, NULL);
 			return 0;
 		}
 		else {
@@ -505,12 +495,6 @@ int main( int argc, char** argv )
                 printf("Child cpid[%d]=%d terminated with state: %d.\n", i, cpids[i], state);
             }
 		}
-
-        // printf("front:%d back: %d\n", queue_pointer -> front, queue_pointer -> back);
-        // for (int i = 0; i < queue_pointer -> max_size; i++) {
-        //     recv_chunk* temp = queue_pointer -> buf + i;
-        //     printf("seq: %d, size: %ld \n", temp -> seq, temp -> size);
-        // }
 
         concat_image(idat_buf, queue_pointer);
 
