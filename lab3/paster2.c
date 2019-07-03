@@ -264,7 +264,6 @@ void producer(queue* q, g_vars* g) {
         pthread_mutex_lock(&(g -> queue_mutex));
 
         enqueue(q, recv_buf.buf, recv_buf.size, recv_buf.seq);
-        printf("produced: %d \n", recv_buf.seq);
 
         (g -> next_prod)++;
 
@@ -325,7 +324,6 @@ void consumer(queue* q, g_vars* g, idat_chunk* idat, int time) {
 
         pthread_mutex_unlock(&(g -> idat_mutex));
 
-        printf("consumed: %d \n", temp -> seq);
         sem_post(&(g -> empty));
     }
 }
@@ -492,7 +490,6 @@ int main( int argc, char** argv )
 		for ( int i = 0; i < num_con + num_prod; i++ ) {
 			waitpid(cpids[i], &state, 0);
 			if (WIFEXITED(state)) {
-                printf("Child cpid[%d]=%d terminated with state: %d.\n", i, cpids[i], state);
             }
 		}
 
