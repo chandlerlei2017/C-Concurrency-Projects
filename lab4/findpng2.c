@@ -2,13 +2,19 @@
 
 typedef struct thread_args              /* thread input parameters struct */
 {
-    linked_list* url_frontier;
+  linked_list* url_frontier;
 } thread_args;
 
 // Thread function to process the urls
 void *process_url(void *arg) {
   thread_args *p_in = arg;
+  linked_list* url_frontier = p_in -> url_frontier;
 
+  while (url_frontier -> head != NULL) {
+    char* curr_url = pop(p_in -> url_frontier);
+    printf("url: %s \n", curr_url);
+    free(curr_url);
+  }
 }
 
 int main( int argc, char** argv )
@@ -93,10 +99,9 @@ int main( int argc, char** argv )
       printf("Thread ID %lu joined.\n", p_tids[i]);
   }
 
+  // cleanup
+
   free(p_tids);
-
-  // destroy the hashset
-
   hdestroy();
   list_cleanup(url_frontier);
   free(url_frontier);
