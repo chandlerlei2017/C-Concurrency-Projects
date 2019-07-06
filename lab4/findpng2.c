@@ -55,7 +55,7 @@ int main( int argc, char** argv )
     insert(ll, element);
   }
 
-  for (i = 0; i < 10; i++) {
+  for (i = 0; i < 11; i++) {
     char* element = pop(ll);
 
     printf("%s\n", element);
@@ -64,7 +64,7 @@ int main( int argc, char** argv )
   }
 
 
-
+  cleanup(ll);
   free(ll);
   // Initialize the hashset
   hcreate(1000);

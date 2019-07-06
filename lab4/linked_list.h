@@ -32,7 +32,8 @@ void insert(linked_list* ll, char* buffer) {
 
 char* pop(linked_list* ll) {
   if(ll -> head == NULL) {
-    printf("List size is zero, couldn't pop");
+    printf("List size is zero, couldn't pop \n");
+    exit(3);
   }
   else {
     node* temp = ll -> head;
