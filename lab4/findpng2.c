@@ -4,11 +4,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <curl/curl.h>
+#include <search.h>
+#include <pthread.h>
+#include <getopt.h>
 #include <libxml/HTMLparser.h>
 #include <libxml/parser.h>
 #include <libxml/xpath.h>
 #include <libxml/uri.h>
-#include <search.h>
+
 #include "linked_list.h"
 
 #define SEED_URL "http://ece252-1.uwaterloo.ca/lab4/"
@@ -34,8 +37,15 @@ typedef struct recv_buf2 {
                     /* <0 indicates an invalid seq number */
 } RECV_BUF;
 
+typedef struct thread_args              /* thread input parameters struct */
+{
+    linked_list* url_frontier;
+} thread_args;
+
+
 // Thread function to process the urls
 void *process_url(void *arg) {
+  thread_args *p_in = arg;
 
 }
 
@@ -47,11 +57,16 @@ int main( int argc, char** argv )
   char v[256];
   char base_url[256];
   int count = 0;
+
+  linked_list* url_frontier = malloc(sizeof(linked_list));
+  init(url_frontier);
+
+  ENTRY e, *ep;
+
   char *str = "option requires an argument";
+  strcpy(v, "log_file.txt");
 
-
-  // Initialize the hashset
-  hcreate(1000);
+  // get arguments
 
   while ((c = getopt (argc, argv, "t:m:v:")) != -1) {
     switch (c) {
@@ -79,35 +94,44 @@ int main( int argc, char** argv )
     count += 1;
   }
 
+  // Initialize the hashset
+
+  hcreate(1000);
+
   memcpy(base_url, argv[2*count + 1], strlen(argv[2*count + 1]) + 1);
 
-  //printf("t: %d, m: %d, v: %s, url: %s \n", t, m, v, base_url);
+  e.key = base_url;
+  e.data = NULL;
 
+  ep = hsearch(e, ENTER);
 
+  if (ep == NULL) {
+      fprintf(stderr, "Hash table entry failed\n");
+      exit(EXIT_FAILURE);
+  }
 
-  // Code to test linked list implementation
+  // push base_url into url frontier
+  push(url_frontier, e.key);
 
-  // linked_list* ll = malloc(sizeof(linked_list));
-  // init(ll);
+  // create threads
+  pthread_t *p_tids = malloc(sizeof(pthread_t) * t);
 
-  // for (i = 0; i < 10; i++){
-  //   char element[256];
-  //   sprintf(element, "https://google.com/%d", i);
+  thread_args in_params;
+  in_params.url_frontier = url_frontier;
 
-  //   insert(ll, element);
-  // }
+  for (int i = 0; i < t; i++) {
+    pthread_create(p_tids + i, NULL, process_url, &in_params);
+  }
 
-  // for (i = 0; i < 10; i++) {
-  //   char* element = pop(ll);
+  // wait for threads
+  for (int i=0; i < t; i++) {
+      pthread_join(p_tids[i], NULL);
+      printf("Thread ID %lu joined.\n", p_tids[i]);
+  }
 
-  //   printf("%s\n", element);
+  free(p_tids);
 
-  //   free(element);
-  // }
-
-  // cleanup(ll);
-  // free(ll);
-
+  //printf("t: %d, m: %d, v: %s, %s \n", t, m, v, e.key);
 
   // destroy the hashset
   hdestroy();

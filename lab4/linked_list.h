@@ -15,7 +15,7 @@ void init(linked_list* ll) {
   ll -> head = NULL;
 }
 
-void insert(linked_list* ll, char* buffer) {
+void push(linked_list* ll, char* buffer) {
   if (ll -> head == NULL) {
     ll -> head = (node*) malloc(sizeof(node));
     memcpy(ll -> head -> buffer, buffer, strlen(buffer));
