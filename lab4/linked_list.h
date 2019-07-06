@@ -47,7 +47,7 @@ char* pop(linked_list* ll) {
   }
 }
 
-void cleanup(linked_list* ll) {
+void list_cleanup(linked_list* ll) {
   node* it = ll -> head;
   while(it != NULL) {
     node* temp = it;
