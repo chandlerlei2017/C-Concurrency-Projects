@@ -45,6 +45,8 @@ int main( int argc, char** argv )
   int t = 1;
   int m = 5;
   char v[256];
+  char base_url[256];
+  int count = 0;
   char *str = "option requires an argument";
 
 
@@ -73,9 +75,13 @@ int main( int argc, char** argv )
     default:
       return -1;
     }
+
+    count += 1;
   }
 
-  //printf("t: %d, m: %d, v: %s \n", t, m, v);
+  memcpy(base_url, argv[2*count + 1], strlen(argv[2*count + 1]) + 1);
+
+  //printf("t: %d, m: %d, v: %s, url: %s \n", t, m, v, base_url);
 
 
 
