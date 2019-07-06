@@ -18,13 +18,13 @@ void init(linked_list* ll) {
 void push(linked_list* ll, char* buffer) {
   if (ll -> head == NULL) {
     ll -> head = (node*) malloc(sizeof(node));
-    memcpy(ll -> head -> buffer, buffer, strlen(buffer));
+    memcpy(ll -> head -> buffer, buffer, strlen(buffer) + 1);
     ll -> head -> next = NULL;
   }
   else {
     node* temp = (node*) malloc(sizeof(node));
 
-    memcpy(temp -> buffer, buffer, strlen(buffer));
+    memcpy(temp -> buffer, buffer, strlen(buffer) + 1);
     temp -> next = ll -> head;
     ll -> head = temp;
   }
@@ -38,8 +38,8 @@ char* pop(linked_list* ll) {
   else {
     node* temp = ll -> head;
 
-    char* ret_val = malloc(strlen(temp -> buffer));
-    memcpy(ret_val, temp -> buffer, strlen(temp -> buffer));
+    char* ret_val = malloc(strlen(temp -> buffer) + 1);
+    memcpy(ret_val, temp -> buffer, strlen(temp -> buffer) + 1);
     ll -> head = temp -> next;
 
     free(temp);
@@ -57,3 +57,15 @@ void list_cleanup(linked_list* ll) {
   ll -> head = NULL;
 }
 
+void print_list(linked_list* ll) {
+  node* it = ll -> head;
+
+  printf("\nList Begins: \n");
+
+  while(it != NULL) {
+    printf("%s \n", it -> buffer);
+    it = it -> next;
+  }
+
+  printf("List Ends \n");
+}

@@ -11,9 +11,37 @@ void *process_url(void *arg) {
   linked_list* url_frontier = p_in -> url_frontier;
 
   while (url_frontier -> head != NULL) {
+    CURL *curl_handle;
+    CURLcode res;
+    RECV_BUF recv_buf;
     char* curr_url = pop(p_in -> url_frontier);
-    printf("url: %s \n", curr_url);
-    free(curr_url);
+
+    printf("current url: %s\n", curr_url);
+    print_list(url_frontier);
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl_handle = easy_handle_init(&recv_buf, curr_url);
+
+    if ( curl_handle == NULL ) {
+      fprintf(stderr, "Curl initialization failed. Exiting...\n");
+      curl_global_cleanup();
+      abort();
+    }
+
+    res = curl_easy_perform(curl_handle);
+
+    if( res != CURLE_OK) {
+      fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+      cleanup(curl_handle, &recv_buf);
+    } else {
+	    printf("%lu bytes received in memory %p, seq=%d.\n", recv_buf.size, recv_buf.buf, recv_buf.seq);
+
+      process_data(curl_handle, &recv_buf, url_frontier);
+      printf("\n");
+
+      cleanup(curl_handle, &recv_buf);
+      free(curr_url);
+    }
   }
 }
 
@@ -66,7 +94,7 @@ int main( int argc, char** argv )
 
   // Initialize the hashset
 
-  hcreate(1000);
+  hcreate(100000);
 
   memcpy(base_url, argv[2*count + 1], strlen(argv[2*count + 1]) + 1);
 

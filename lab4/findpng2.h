@@ -10,6 +10,7 @@
 #include <libxml/xpath.h>
 #include <libxml/uri.h>
 
+
 #define SEED_URL "http://ece252-1.uwaterloo.ca/lab4/"
 #define ECE252_HEADER "X-Ece252-Fragment: "
 #define BUF_SIZE 1048576  /* 1024*1024 = 1M */
@@ -36,15 +37,14 @@ typedef struct recv_buf2 {
 
 htmlDocPtr mem_getdoc(char *buf, int size, const char *url);
 xmlXPathObjectPtr getnodeset (xmlDocPtr doc, xmlChar *xpath);
-int find_http(char *fname, int size, int follow_relative_links, const char *base_url);
+int find_http(char *fname, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier);
 size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata);
 size_t write_cb_curl3(char *p_recv, size_t size, size_t nmemb, void *p_userdata);
 int recv_buf_init(RECV_BUF *ptr, size_t max_size);
 int recv_buf_cleanup(RECV_BUF *ptr);
 void cleanup(CURL *curl, RECV_BUF *ptr);
-int write_file(const char *path, const void *in, size_t len);
 CURL *easy_handle_init(RECV_BUF *ptr, const char *url);
-int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf);
+int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier);
 
 
 htmlDocPtr mem_getdoc(char *buf, int size, const char *url)
@@ -85,9 +85,8 @@ xmlXPathObjectPtr getnodeset (xmlDocPtr doc, xmlChar *xpath)
     return result;
 }
 
-int find_http(char *buf, int size, int follow_relative_links, const char *base_url)
+int find_http(char *buf, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier)
 {
-
     int i;
     htmlDocPtr doc;
     xmlChar *xpath = (xmlChar*) "//a/@href";
@@ -111,7 +110,20 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                 xmlFree(old);
             }
             if ( href != NULL && !strncmp((const char *)href, "http", 4) ) {
-                printf("href: %s\n", href);
+                  ENTRY e, *ep;
+                  e.key = (char*) href;
+                  e.data = NULL;
+
+                  printf("href: %s\n", e.key);
+
+                  ep = hsearch(e, FIND);
+                  if (ep == NULL) {
+                    ep = hsearch(e, ENTER);
+                    push(url_frontier, e.key);
+                  }
+                  else {
+                      printf("duplicate: %s\n", e.key);
+                  }
             }
             xmlFree(href);
         }
@@ -228,40 +240,6 @@ void cleanup(CURL *curl, RECV_BUF *ptr)
         recv_buf_cleanup(ptr);
 }
 /**
- * @brief output data in memory to a file
- * @param path const char *, output file path
- * @param in  void *, input data to be written to the file
- * @param len size_t, length of the input data in bytes
- */
-
-int write_file(const char *path, const void *in, size_t len)
-{
-    FILE *fp = NULL;
-
-    if (path == NULL) {
-        fprintf(stderr, "write_file: file name is null!\n");
-        return -1;
-    }
-
-    if (in == NULL) {
-        fprintf(stderr, "write_file: input data is null!\n");
-        return -1;
-    }
-
-    fp = fopen(path, "wb");
-    if (fp == NULL) {
-        perror("fopen");
-        return -2;
-    }
-
-    if (fwrite(in, 1, len, fp) != len) {
-        fprintf(stderr, "write_file: imcomplete write!\n");
-        return -3;
-    }
-    return fclose(fp);
-}
-
-/**
  * @brief create a curl easy handle and set the options.
  * @param RECV_BUF *ptr points to user data needed by the curl write call back function
  * @param const char *url is the target url to fetch resoruce
@@ -331,7 +309,7 @@ CURL *easy_handle_init(RECV_BUF *ptr, const char *url)
     return curl_handle;
 }
 
-int process_html(CURL *curl_handle, RECV_BUF *p_recv_buf)
+int process_html(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier)
 {
     char fname[256];
     int follow_relative_link = 1;
@@ -339,9 +317,10 @@ int process_html(CURL *curl_handle, RECV_BUF *p_recv_buf)
     pid_t pid =getpid();
 
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &url);
-    find_http(p_recv_buf->buf, p_recv_buf->size, follow_relative_link, url);
+    find_http(p_recv_buf->buf, p_recv_buf->size, follow_relative_link, url, url_frontier);
+    printf("\n");
     sprintf(fname, "./output_%d.html", pid);
-    return write_file(fname, p_recv_buf->buf, p_recv_buf->size);
+    return 0;
 }
 
 int process_png(CURL *curl_handle, RECV_BUF *p_recv_buf)
@@ -355,7 +334,7 @@ int process_png(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
 
     sprintf(fname, "./output_%d_%d.png", p_recv_buf->seq, pid);
-    return write_file(fname, p_recv_buf->buf, p_recv_buf->size);
+    return 0;
 }
 /**
  * @brief process teh download data by curl
@@ -364,7 +343,7 @@ int process_png(CURL *curl_handle, RECV_BUF *p_recv_buf)
  * @return 0 on success; non-zero otherwise
  */
 
-int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf)
+int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier)
 {
     CURLcode res;
     char fname[256];
@@ -391,12 +370,12 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf)
     }
 
     if ( strstr(ct, CT_HTML) ) {
-        return process_html(curl_handle, p_recv_buf);
+        return process_html(curl_handle, p_recv_buf, url_frontier);
     } else if ( strstr(ct, CT_PNG) ) {
         return process_png(curl_handle, p_recv_buf);
     } else {
         sprintf(fname, "./output_%d", pid);
     }
 
-    return write_file(fname, p_recv_buf->buf, p_recv_buf->size);
+    return 0;
 }
