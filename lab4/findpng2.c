@@ -34,8 +34,6 @@ typedef struct recv_buf2 {
                     /* <0 indicates an invalid seq number */
 } RECV_BUF;
 
-
-
 // Thread function to process the urls
 void *process_url(void *arg) {
 
@@ -43,32 +41,66 @@ void *process_url(void *arg) {
 
 int main( int argc, char** argv )
 {
-  int i;
-
-  linked_list* ll = malloc(sizeof(linked_list));
-  init(ll);
-
-  for (i = 0; i < 10; i++){
-    char element[256];
-    sprintf(element, "%d", i);
-
-    insert(ll, element);
-  }
-
-  for (i = 0; i < 11; i++) {
-    char* element = pop(ll);
-
-    printf("%s\n", element);
-
-    free(element);
-  }
+  int c;
+  int t = 1;
+  int m = 5;
+  char v[256];
+  char *str = "option requires an argument";
 
 
-  cleanup(ll);
-  free(ll);
   // Initialize the hashset
   hcreate(1000);
 
+  while ((c = getopt (argc, argv, "t:m:v:")) != -1) {
+    switch (c) {
+    case 't':
+    t = strtoul(optarg, NULL, 10);
+    if (t <= 0) {
+      fprintf(stderr, "%s: %s > 0 -- 't'\n", argv[0], str);
+      return -1;
+    }
+    break;
+    case 'm':
+    m = strtoul(optarg, NULL, 10);
+    if (m <= 0) {
+      fprintf(stderr, "%s: %s > 0 -- 'n'\n", argv[0], str);
+      return -1;
+    }
+    break;
+    case 'v':
+    memcpy(v, optarg, strlen(optarg) + 1);
+    break;
+    default:
+      return -1;
+    }
+  }
+
+  //printf("t: %d, m: %d, v: %s \n", t, m, v);
+
+
+
+  // Code to test linked list implementation
+
+  // linked_list* ll = malloc(sizeof(linked_list));
+  // init(ll);
+
+  // for (i = 0; i < 10; i++){
+  //   char element[256];
+  //   sprintf(element, "https://google.com/%d", i);
+
+  //   insert(ll, element);
+  // }
+
+  // for (i = 0; i < 10; i++) {
+  //   char* element = pop(ll);
+
+  //   printf("%s\n", element);
+
+  //   free(element);
+  // }
+
+  // cleanup(ll);
+  // free(ll);
 
 
   // destroy the hashset
