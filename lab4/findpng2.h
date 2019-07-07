@@ -99,9 +99,10 @@ size_t header_cb_curl(char *p_recv, size_t size, size_t nmemb, void *userdata)
     int realsize = size * nmemb;
     RECV_BUF *p = userdata;
 
-#ifdef DEBUG1_
-    printf("%s", p_recv);
-#endif /* DEBUG1_ */
+// #ifdef DEBUG1_
+//     printf("%s", p_recv);
+// #endif /* DEBUG1_ */
+
     if (realsize > strlen(ECE252_HEADER) &&
 	strncmp(p_recv, ECE252_HEADER, strlen(ECE252_HEADER)) == 0) {
 

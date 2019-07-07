@@ -17,14 +17,14 @@ int insert_hash(char* str) {
   e.key = str;
 
   if (hsearch(e, FIND) != NULL) {
-    printf("This is already in the Hashset: %s\n", str);
+    //printf("This is already in the Hashset: %s\n", str);
   }
   else {
     if(hsearch(e, ENTER) == NULL) {
-      printf("Unable to add to Hash: %s\n", str);
+      //printf("Unable to add to Hash: %s\n", str);
     }
     else {
-      printf("Added to Hash: %s\n", str);
+      //printf("Added to Hash: %s\n", str);
       return 1;
     }
   }
@@ -85,7 +85,6 @@ int process_html(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
 
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &url);
     find_http(p_recv_buf->buf, p_recv_buf->size, follow_relative_link, url, url_frontier);
-    printf("\n");
     sprintf(fname, "./output_%d.html", pid);
     return 0;
 }
@@ -134,7 +133,6 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     res = curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
 
     if ( res == CURLE_OK ) {
-	    printf("Response code: %ld\n", response_code);
     }
 
     if ( response_code >= 200 && response_code < 300) {
@@ -154,7 +152,6 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     char *ct = NULL;
     res = curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ct);
     if ( res == CURLE_OK && ct != NULL ) {
-    	printf("Content-Type: %s, len=%ld\n", ct, strlen(ct));
     } else {
         fprintf(stderr, "Failed obtain Content-Type\n");
         return 2;
@@ -237,10 +234,7 @@ void *process_url(void *arg) {
       fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
       cleanup(curl_handle, &recv_buf);
     } else {
-	    printf("%lu bytes received in memory %p, seq=%d.\n", recv_buf.size, recv_buf.buf, recv_buf.seq);
-
       process_data(curl_handle, &recv_buf, url_frontier, curr_url);
-      printf("\n");
 
       cleanup(curl_handle, &recv_buf);
     }
