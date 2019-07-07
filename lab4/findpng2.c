@@ -59,8 +59,6 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                   if(insert_hash(new_href) == 1) {
                     push(url_frontier, new_href);
                   }
-
-                  //free(new_href);
             }
             xmlFree(href);
         }
