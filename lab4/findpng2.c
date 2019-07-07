@@ -4,6 +4,8 @@
 char v[256];
 int png_count;
 int m;
+pthread_mutex_t ll_mutex;
+pthread_mutex_t count_mutex;
 
 int find_http(char *fname, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier);
 int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier, char* curr_url);
@@ -56,9 +58,14 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
             if ( href != NULL && !strncmp((const char *)href, "http", 4) ) {
                   char* new_href = (char* ) xmlStrdup(href);
 
+                  pthread_mutex_lock(&ll_mutex);
+
                   if(insert_hash(new_href) == 1) {
                     push(url_frontier, new_href);
                   }
+
+                  pthread_mutex_unlock(&ll_mutex);
+
             }
             xmlFree(href);
         }
@@ -86,17 +93,30 @@ int process_html(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
 int process_png(CURL *curl_handle, RECV_BUF *p_recv_buf)
 {
     char *eurl = NULL;          /* effective URL */
+    int flag = 0;
+
+    pthread_mutex_lock(&count_mutex);
+
+    if( png_count < m) {
+      flag = 1;
+      png_count +=1;
+    }
+
+    pthread_mutex_unlock(&count_mutex);
+
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &eurl);
 
-    FILE* fp = fopen("png_urls.txt", "a+");
-    fprintf(fp, "%s\n", eurl);
+    if (flag == 1) {
+      FILE* fp = fopen("png_urls.txt", "a+");
+      fprintf(fp, "%s\n", eurl);
 
-    fclose(fp);
-    png_count +=1;
+      fclose(fp);
+    }
+
     return 0;
 }
 /**
- * @brief process teh download data by curl
+ * @brief process the download data by curl
  * @param CURL *curl_handle is the curl handler
  * @param RECV_BUF p_recv_buf contains the received data.
  * @return 0 on success; non-zero otherwise
@@ -176,11 +196,31 @@ void *process_url(void *arg) {
   thread_args *p_in = arg;
   linked_list* url_frontier = p_in -> url_frontier;
 
-  while (url_frontier -> head != NULL && png_count < m) {
+  while (1) {
+    pthread_mutex_lock(&count_mutex);
+
+    if (png_count >= m) {
+      pthread_mutex_unlock(&count_mutex);
+      break;
+    }
+
+    pthread_mutex_unlock(&count_mutex);
+
+    pthread_mutex_lock(&ll_mutex);
+
+    if (url_frontier -> head == NULL) {
+      pthread_mutex_unlock(&ll_mutex);
+      break;
+    }
+
+    char* curr_url = pop(url_frontier);
+
+    pthread_mutex_unlock(&ll_mutex);
+
     CURL *curl_handle;
     CURLcode res;
     RECV_BUF recv_buf;
-    char* curr_url = pop(url_frontier);
+
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl_handle = easy_handle_init(&recv_buf, curr_url);
@@ -217,6 +257,9 @@ int main( int argc, char** argv )
   m = 50;
   char* base_url = malloc(256);
   int count = 0;
+
+  pthread_mutex_init ( &ll_mutex , NULL ) ;
+  pthread_mutex_init ( &count_mutex , NULL ) ;
 
   linked_list* url_frontier = malloc(sizeof(linked_list));
   init(url_frontier);
