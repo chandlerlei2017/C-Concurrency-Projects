@@ -6,7 +6,7 @@ int png_count;
 int m;
 
 int find_http(char *fname, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier);
-int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier);
+int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier, char* curr_url);
 void test_hash();
 int insert_hash(char* str);
 
@@ -60,7 +60,7 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                     push(url_frontier, new_href);
                   }
 
-                  free(new_href);
+                  //free(new_href);
             }
             xmlFree(href);
         }
@@ -104,29 +104,30 @@ int process_png(CURL *curl_handle, RECV_BUF *p_recv_buf)
  * @return 0 on success; non-zero otherwise
  */
 
-int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier)
+int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier, char* curr_url)
 {
     CURLcode res;
     char fname[256];
     pid_t pid =getpid();
     long response_code;
-    char *url = NULL;
 
     FILE* fp = fopen(v, "a+");
 
     res = curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
-    curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &url);
 
     if ( res == CURLE_OK ) {
 	    printf("Response code: %ld\n", response_code);
-      fprintf(fp, "%s\n", url);
     }
-    if ( response_code >= 400 && response_code < 500) {
+
+    if ( response_code >= 200 && response_code < 300) {
+    	fprintf(fp, "%s\n", curr_url);
+    }
+    else if ( response_code >= 400 && response_code < 500) {
     	fprintf(stderr, "Error.\n");
       return 1;
     }
     else if ( response_code >= 500 && response_code < 600) {
-      fprintf(fp, "%s\n", url);
+      fprintf(fp, "%s\n", curr_url);
       return 1;
     }
 
@@ -183,8 +184,6 @@ void *process_url(void *arg) {
     RECV_BUF recv_buf;
     char* curr_url = pop(url_frontier);
 
-    printf("current url: %s\n", curr_url);
-
     curl_global_init(CURL_GLOBAL_DEFAULT);
     curl_handle = easy_handle_init(&recv_buf, curr_url);
 
@@ -202,7 +201,7 @@ void *process_url(void *arg) {
     } else {
 	    printf("%lu bytes received in memory %p, seq=%d.\n", recv_buf.size, recv_buf.buf, recv_buf.seq);
 
-      process_data(curl_handle, &recv_buf, url_frontier);
+      process_data(curl_handle, &recv_buf, url_frontier, curr_url);
       printf("\n");
 
       cleanup(curl_handle, &recv_buf);
@@ -218,13 +217,11 @@ int main( int argc, char** argv )
   int c;
   int t = 1;
   m = 50;
-  char base_url[256];
+  char* base_url = malloc(256);
   int count = 0;
 
   linked_list* url_frontier = malloc(sizeof(linked_list));
   init(url_frontier);
-
-  ENTRY e, *ep;
 
   char *str = "option requires an argument";
   strcpy(v, "log.txt");
@@ -265,18 +262,9 @@ int main( int argc, char** argv )
 
   memcpy(base_url, argv[2*count + 1], strlen(argv[2*count + 1]) + 1);
 
-  e.key = base_url;
-  e.data = NULL;
-
-  ep = hsearch(e, ENTER);
-
-  if (ep == NULL) {
-      fprintf(stderr, "Hash table entry failed\n");
-      exit(EXIT_FAILURE);
+  if(insert_hash(base_url) == 1) {
+    push(url_frontier, base_url);
   }
-
-  // push base_url into url frontier
-  push(url_frontier, e.key);
 
   // create threads
   pthread_t *p_tids = malloc(sizeof(pthread_t) * t);
@@ -304,6 +292,7 @@ int main( int argc, char** argv )
 
   // cleanup
 
+  free(base_url);
   free(p_tids);
   hdestroy();
   list_cleanup(url_frontier);
