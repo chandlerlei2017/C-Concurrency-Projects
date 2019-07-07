@@ -217,10 +217,19 @@ void *process_url(void *arg) {
   while (1) {
     barrier();
 
+    pthread_mutex_lock(&count_mutex);
+
+    if (png_count >= m) {
+      pthread_mutex_unlock(&count_mutex);
+      break;
+    }
+
+    pthread_mutex_unlock(&count_mutex);
+
     pthread_mutex_lock(&first);
     int first_thread = 0;
 
-    if(first_flag == 0) {
+    if (first_flag == 0) {
       first_thread = 1;
       first_flag = 1;
     }
@@ -246,15 +255,6 @@ void *process_url(void *arg) {
     char* curr_url = pop(url_frontier);
 
     pthread_mutex_unlock(&ll_mutex);
-
-    pthread_mutex_lock(&count_mutex);
-
-    if (png_count >= m) {
-      pthread_mutex_unlock(&count_mutex);
-      break;
-    }
-
-    pthread_mutex_unlock(&count_mutex);
 
     CURL *curl_handle;
     CURLcode res;
