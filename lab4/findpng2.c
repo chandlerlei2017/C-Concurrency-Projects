@@ -4,13 +4,34 @@
 char v[256];
 int png_count;
 int m;
+int t;
+int first_flag;
+int break_thread;
 pthread_mutex_t ll_mutex;
 pthread_mutex_t count_mutex;
+pthread_mutex_t first;
+
+int p_count;
+pthread_mutex_t barrier_mutex;
+pthread_cond_t cv;
 
 int find_http(char *fname, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier);
 int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier, char* curr_url);
 void test_hash();
 int insert_hash(char* str);
+
+void barrier() {
+  pthread_mutex_lock(&barrier_mutex);
+  p_count++;
+  if (p_count < t) {
+    pthread_cond_wait(&cv, &barrier_mutex);
+  } else {
+    first_flag = 0;
+    p_count = 0;
+    pthread_cond_broadcast(&cv);
+  }
+  pthread_mutex_unlock(&barrier_mutex);
+}
 
 int insert_hash(char* str) {
   ENTRY e;
@@ -194,6 +215,38 @@ void *process_url(void *arg) {
   linked_list* url_frontier = p_in -> url_frontier;
 
   while (1) {
+    barrier();
+
+    pthread_mutex_lock(&first);
+    int first_thread = 0;
+
+    if(first_flag == 0) {
+      first_thread = 1;
+      first_flag = 1;
+    }
+
+    pthread_mutex_unlock(&first);
+
+    pthread_mutex_lock(&ll_mutex);
+
+    if (url_frontier -> head == NULL && first_thread == 1) {
+      break_thread = 1;
+    }
+
+    if (break_thread == 1) {
+      pthread_mutex_unlock(&ll_mutex);
+      break;
+    }
+
+    if (url_frontier -> head == NULL) {
+      pthread_mutex_unlock(&ll_mutex);
+      continue;
+    }
+
+    char* curr_url = pop(url_frontier);
+
+    pthread_mutex_unlock(&ll_mutex);
+
     pthread_mutex_lock(&count_mutex);
 
     if (png_count >= m) {
@@ -202,17 +255,6 @@ void *process_url(void *arg) {
     }
 
     pthread_mutex_unlock(&count_mutex);
-
-    pthread_mutex_lock(&ll_mutex);
-
-    if (url_frontier -> head == NULL) {
-      pthread_mutex_unlock(&ll_mutex);
-      break;
-    }
-
-    char* curr_url = pop(url_frontier);
-
-    pthread_mutex_unlock(&ll_mutex);
 
     CURL *curl_handle;
     CURLcode res;
@@ -238,7 +280,6 @@ void *process_url(void *arg) {
 
       cleanup(curl_handle, &recv_buf);
     }
-
     free(curr_url);
   }
   return NULL;
@@ -247,13 +288,20 @@ void *process_url(void *arg) {
 int main( int argc, char** argv )
 {
   int c;
-  int t = 1;
+  t = 1;
   m = 50;
   char* base_url = malloc(256);
   int count = 0;
+  p_count = 0;
+  first_flag = 0;
+  break_thread = 0;
 
-  pthread_mutex_init ( &ll_mutex , NULL ) ;
-  pthread_mutex_init ( &count_mutex , NULL ) ;
+  pthread_mutex_init (&ll_mutex , NULL);
+  pthread_mutex_init (&count_mutex , NULL);
+  pthread_mutex_init (&first , NULL);
+
+  pthread_mutex_init (&barrier_mutex , NULL);
+  pthread_cond_init(&cv, NULL);
 
   linked_list* url_frontier = malloc(sizeof(linked_list));
   init(url_frontier);
@@ -289,7 +337,7 @@ int main( int argc, char** argv )
     count += 1;
   }
 
-  //printf("t: %d, m: %d, v: %s, %s \n", t, m, v, e.key);
+  //printf("t: %d, m: %d, v: %s, %s \n", t, m, v, base_url);
 
   // Initialize the hashset
 
@@ -326,6 +374,12 @@ int main( int argc, char** argv )
   }
 
   // cleanup
+  pthread_mutex_destroy(&ll_mutex);
+  pthread_mutex_destroy(&count_mutex);
+  pthread_mutex_destroy(&first);
+
+  pthread_mutex_destroy(&barrier_mutex);
+  pthread_cond_destroy(&cv);
 
   free(base_url);
   free(p_tids);
