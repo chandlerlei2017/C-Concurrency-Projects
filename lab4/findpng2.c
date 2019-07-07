@@ -22,6 +22,10 @@
 #define CT_PNG_LEN  9
 #define CT_HTML_LEN 9
 
+char v[256];
+int png_count;
+int m;
+
 #define max(a, b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
@@ -335,15 +339,14 @@ int process_html(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
 
 int process_png(CURL *curl_handle, RECV_BUF *p_recv_buf)
 {
-    pid_t pid =getpid();
-    char fname[256];
     char *eurl = NULL;          /* effective URL */
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &eurl);
-    if ( eurl != NULL) {
-        printf("The PNG url is: %s\n", eurl);
-    }
 
-    sprintf(fname, "./output_%d_%d.png", p_recv_buf->seq, pid);
+    FILE* fp = fopen("png_urls.txt", "a+");
+    fprintf(fp, "%s\n", eurl);
+
+    fclose(fp);
+    png_count +=1;
     return 0;
 }
 /**
@@ -359,16 +362,27 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     char fname[256];
     pid_t pid =getpid();
     long response_code;
+    char *url = NULL;
+
+    FILE* fp = fopen(v, "a+");
 
     res = curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
+    curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &url);
+
     if ( res == CURLE_OK ) {
 	    printf("Response code: %ld\n", response_code);
+      fprintf(fp, "%s\n", url);
+    }
+    if ( response_code >= 400 && response_code < 500) {
+    	fprintf(stderr, "Error.\n");
+      return 1;
+    }
+    else if ( response_code >= 500 && response_code < 600) {
+      fprintf(fp, "%s\n", url);
+      return 1;
     }
 
-    if ( response_code >= 400 ) {
-    	fprintf(stderr, "Error.\n");
-        return 1;
-    }
+    fclose(fp);
 
     char *ct = NULL;
     res = curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ct);
@@ -415,7 +429,7 @@ void *process_url(void *arg) {
   thread_args *p_in = arg;
   linked_list* url_frontier = p_in -> url_frontier;
 
-  while (url_frontier -> head != NULL) {
+  while (url_frontier -> head != NULL && png_count < m) {
     CURL *curl_handle;
     CURLcode res;
     RECV_BUF recv_buf;
@@ -453,8 +467,7 @@ int main( int argc, char** argv )
 {
   int c;
   int t = 1;
-  int m = 5;
-  char v[256];
+  m = 50;
   char base_url[256];
   int count = 0;
 
@@ -464,7 +477,7 @@ int main( int argc, char** argv )
   ENTRY e, *ep;
 
   char *str = "option requires an argument";
-  strcpy(v, "log_file.txt");
+  strcpy(v, "log.txt");
 
   // get arguments
 
@@ -522,6 +535,14 @@ int main( int argc, char** argv )
   in_params.url_frontier = url_frontier;
 
   //test_hash();
+
+  FILE* fp = fopen("png_urls.txt", "w");
+  fclose(fp);
+
+  fp = fopen(v, "w");
+  fclose(fp);
+
+  png_count = 0;
 
   for (int i = 0; i < t; i++) {
     pthread_create(p_tids + i, NULL, process_url, &in_params);
