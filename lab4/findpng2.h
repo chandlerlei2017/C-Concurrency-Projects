@@ -85,6 +85,25 @@ xmlXPathObjectPtr getnodeset (xmlDocPtr doc, xmlChar *xpath)
     return result;
 }
 
+int insert_hash(char* str) {
+  ENTRY e;
+  e.key = str;
+
+  if (hsearch(e, FIND) != NULL) {
+    printf("This is already in the Hashset: %s\n", str);
+  }
+  else {
+    if(hsearch(e, ENTER) == NULL) {
+      printf("Unable to add to Hash: %s\n", str);
+    }
+    else {
+      printf("Added to Hash: %s\n", str);
+      return 1;
+    }
+  }
+  return 0;
+}
+
 int find_http(char *buf, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier)
 {
     int i;
@@ -110,19 +129,8 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                 xmlFree(old);
             }
             if ( href != NULL && !strncmp((const char *)href, "http", 4) ) {
-                  ENTRY e, *ep;
-                  e.key = (char*) href;
-                  e.data = NULL;
-
-                  printf("href: %s\n", e.key);
-
-                  ep = hsearch(e, FIND);
-                  if (ep == NULL) {
-                    ep = hsearch(e, ENTER);
-                    push(url_frontier, e.key);
-                  }
-                  else {
-                      printf("duplicate: %s\n", e.key);
+                  if(insert_hash((char*) href) == 1) {
+                    push(url_frontier, (char*) href);
                   }
             }
             xmlFree(href);
