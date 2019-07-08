@@ -180,7 +180,25 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     if ( strstr(ct, CT_HTML) ) {
         return process_html(curl_handle, p_recv_buf, url_frontier);
     } else if ( strstr(ct, CT_PNG) ) {
-        return process_png(curl_handle, p_recv_buf);
+        unsigned char expected[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        int real_png = 1;
+
+        unsigned char buffer[8];
+        memcpy(buffer, p_recv_buf -> buf, 8);
+
+        for (int i = 0; i < 8; i++){
+            if(buffer[i] != expected[i]) {
+                //printf("real: %X, expected: %X \n", buffer[i], expected[i]);
+                real_png = 0;
+                break;
+            }
+        }
+        if (real_png == 1) {
+          return process_png(curl_handle, p_recv_buf);
+        }
+        else{
+          return 0;
+        }
     } else {
         sprintf(fname, "./output_%d", pid);
     }
