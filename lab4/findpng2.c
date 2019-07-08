@@ -9,7 +9,6 @@ int first_flag;
 int break_thread;
 pthread_mutex_t ll_mutex;
 pthread_mutex_t count_mutex;
-pthread_mutex_t first;
 
 int p_count;
 pthread_mutex_t barrier_mutex;
@@ -226,21 +225,13 @@ void *process_url(void *arg) {
 
     pthread_mutex_unlock(&count_mutex);
 
-    pthread_mutex_lock(&first);
-    int first_thread = 0;
-
-    if (first_flag == 0) {
-      first_thread = 1;
-      first_flag = 1;
-    }
-
-    pthread_mutex_unlock(&first);
-
     pthread_mutex_lock(&ll_mutex);
 
-    if (url_frontier -> head == NULL && first_thread == 1) {
+    if (url_frontier -> head == NULL && first_flag == 0) {
       break_thread = 1;
     }
+
+    first_flag = 1;
 
     if (break_thread == 1) {
       pthread_mutex_unlock(&ll_mutex);
@@ -298,7 +289,6 @@ int main( int argc, char** argv )
 
   pthread_mutex_init (&ll_mutex , NULL);
   pthread_mutex_init (&count_mutex , NULL);
-  pthread_mutex_init (&first , NULL);
 
   pthread_mutex_init (&barrier_mutex , NULL);
   pthread_cond_init(&cv, NULL);
@@ -376,7 +366,6 @@ int main( int argc, char** argv )
   // cleanup
   pthread_mutex_destroy(&ll_mutex);
   pthread_mutex_destroy(&count_mutex);
-  pthread_mutex_destroy(&first);
 
   pthread_mutex_destroy(&barrier_mutex);
   pthread_cond_destroy(&cv);
