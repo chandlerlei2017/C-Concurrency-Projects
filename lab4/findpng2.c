@@ -14,6 +14,9 @@ int p_count;
 pthread_mutex_t barrier_mutex;
 pthread_cond_t cv;
 
+char* pointers[1000*sizeof(char*)];
+int pointer_count;
+
 int find_http(char *fname, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier);
 int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier, char* curr_url);
 void test_hash();
@@ -83,6 +86,9 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                   if(insert_hash(new_href) == 1) {
                     push(url_frontier, new_href);
                   }
+
+                  pointers[pointer_count] = new_href;
+                  pointer_count += 1;
 
                   pthread_mutex_unlock(&ll_mutex);
 
@@ -304,6 +310,7 @@ int main( int argc, char** argv )
   p_count = 0;
   first_flag = 0;
   break_thread = 0;
+  pointer_count = 0;
 
   pthread_mutex_init (&ll_mutex , NULL);
   pthread_mutex_init (&count_mutex , NULL);
@@ -349,7 +356,7 @@ int main( int argc, char** argv )
 
   // Initialize the hashset
 
-  hcreate(100000);
+  hcreate(1000);
 
   memcpy(base_url, argv[2*count + 1], strlen(argv[2*count + 1]) + 1);
 
@@ -382,6 +389,10 @@ int main( int argc, char** argv )
   }
 
   // cleanup
+  for (int i = 0; i < pointer_count; i++) {
+    free(pointers[i]);
+  }
+
   pthread_mutex_destroy(&ll_mutex);
   pthread_mutex_destroy(&count_mutex);
 
