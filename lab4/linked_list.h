@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 typedef struct node {
-  char buffer[256];
+  char* buffer;
   struct node* next;
 } node;
 
@@ -18,13 +18,18 @@ void init(linked_list* ll) {
 void push(linked_list* ll, char* buffer) {
   if (ll -> head == NULL) {
     ll -> head = (node*) malloc(sizeof(node));
+
+    ll -> head -> buffer = malloc(strlen(buffer) + 1);
     memcpy(ll -> head -> buffer, buffer, strlen(buffer) + 1);
+
     ll -> head -> next = NULL;
   }
   else {
     node* temp = (node*) malloc(sizeof(node));
 
+    temp -> buffer = malloc(strlen(buffer) + 1);
     memcpy(temp -> buffer, buffer, strlen(buffer) + 1);
+
     temp -> next = ll -> head;
     ll -> head = temp;
   }
@@ -42,6 +47,7 @@ char* pop(linked_list* ll) {
     memcpy(ret_val, temp -> buffer, strlen(temp -> buffer) + 1);
     ll -> head = temp -> next;
 
+    free(temp -> buffer);
     free(temp);
     return ret_val;
   }
@@ -52,6 +58,8 @@ void list_cleanup(linked_list* ll) {
   while(it != NULL) {
     node* temp = it;
     it = it -> next;
+
+    free(temp -> buffer);
     free(temp);
   }
   ll -> head = NULL;
