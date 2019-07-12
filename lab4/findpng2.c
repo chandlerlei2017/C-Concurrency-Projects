@@ -153,10 +153,19 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     char fname[256];
     pid_t pid =getpid();
     long response_code;
+    char *eff_url = NULL;
 
     FILE* fp = fopen(v, "a+");
 
     res = curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
+    curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &eff_url);
+
+    ENTRY e;
+    e.key = eff_url;
+
+    if (hsearch(e, FIND) == NULL) {
+      fprintf(fp, "%s\n", eff_url);
+    }
 
     if ( res == CURLE_OK ) {
     }
