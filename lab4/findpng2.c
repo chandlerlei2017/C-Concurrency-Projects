@@ -328,7 +328,6 @@ int main( int argc, char** argv )
       perror("gettimeofday");
       abort();
   }
-  times[0] = (tv.tv_sec) + tv.tv_usec/1000000.;
 
   pthread_mutex_init (&ll_mutex , NULL);
   pthread_mutex_init (&count_mutex , NULL);
@@ -395,6 +394,8 @@ int main( int argc, char** argv )
   fclose(fp);
 
   png_count = 0;
+
+  times[0] = (tv.tv_sec) + tv.tv_usec/1000000.;
 
   for (int i = 0; i < t; i++) {
     pthread_create(p_tids + i, NULL, process_url, &in_params);
