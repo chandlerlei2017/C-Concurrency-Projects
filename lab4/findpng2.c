@@ -297,7 +297,7 @@ void *process_url(void *arg) {
     res = curl_easy_perform(curl_handle);
 
     if( res != CURLE_OK) {
-      fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+      //fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
       cleanup(curl_handle, &recv_buf);
     } else {
       process_data(curl_handle, &recv_buf, url_frontier, curr_url);
@@ -320,6 +320,15 @@ int main( int argc, char** argv )
   first_flag = 0;
   break_thread = 0;
   pointer_count = 0;
+
+  double times[2];
+  struct timeval tv;
+
+  if (gettimeofday(&tv, NULL) != 0) {
+      perror("gettimeofday");
+      abort();
+  }
+  times[0] = (tv.tv_sec) + tv.tv_usec/1000000.;
 
   pthread_mutex_init (&ll_mutex , NULL);
   pthread_mutex_init (&count_mutex , NULL);
@@ -396,6 +405,14 @@ int main( int argc, char** argv )
       pthread_join(p_tids[i], NULL);
       printf("Thread ID %lu joined.\n", p_tids[i]);
   }
+
+  if (gettimeofday(&tv, NULL) != 0) {
+    perror("gettimeofday");
+    abort();
+  }
+
+  times[1] = (tv.tv_sec) + tv.tv_usec/1000000.;
+  printf("findpng2 execution time: %.6lf seconds\n",  times[1] - times[0]);
 
   // cleanup
   for (int i = 0; i < pointer_count; i++) {
