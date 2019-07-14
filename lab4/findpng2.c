@@ -79,9 +79,9 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                 xmlFree(old);
             }
             if ( href != NULL && !strncmp((const char *)href, "http", 4) ) {
-                  char* new_href = (char* ) xmlStrdup(href);
-
                   pthread_mutex_lock(&ll_mutex);
+
+                  char* new_href = (char* ) xmlStrdup(href);
 
                   if(insert_hash(new_href) == 1) {
                     push(url_frontier, new_href);
@@ -98,7 +98,6 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
         xmlXPathFreeObject (result);
     }
     xmlFreeDoc(doc);
-    xmlCleanupParser();
     return 0;
 }
 
@@ -304,9 +303,8 @@ void *process_url(void *arg) {
 
       cleanup(curl_handle, &recv_buf);
     }
-    free(curr_url);
 
-    curr_url = NULL;
+    free(curr_url);
   }
   return NULL;
 }
@@ -420,7 +418,6 @@ int main( int argc, char** argv )
   // cleanup
   for (int i = 0; i < pointer_count; i++) {
     free(pointers[i]);
-    pointers[i] = NULL;
   }
 
   pthread_mutex_destroy(&ll_mutex);
@@ -430,13 +427,11 @@ int main( int argc, char** argv )
   pthread_cond_destroy(&cv);
 
   free(base_url);
-  base_url = NULL;
   free(p_tids);
-  p_tids = NULL;
   hdestroy();
   list_cleanup(url_frontier);
   free(url_frontier);
-  url_frontier = NULL;
+  xmlCleanupParser();
 
   return 0;
 }
