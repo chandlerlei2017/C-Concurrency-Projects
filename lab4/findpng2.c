@@ -17,9 +17,8 @@ pthread_cond_t cv;
 char* pointers[1000*sizeof(char*)];
 int pointer_count;
 
-int find_http(char *fname, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier);
+int find_http(char *buf, int size, int follow_relative_links, const char *base_url, linked_list* url_frontier);
 int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier, char* curr_url);
-void test_hash();
 int insert_hash(char* str);
 
 void barrier() {
@@ -103,14 +102,11 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
 
 int process_html(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier)
 {
-    char fname[256];
     int follow_relative_link = 1;
     char *url = NULL;
-    pid_t pid =getpid();
 
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &url);
     find_http(p_recv_buf->buf, p_recv_buf->size, follow_relative_link, url, url_frontier);
-    sprintf(fname, "./output_%d.html", pid);
     return 0;
 }
 
@@ -149,8 +145,6 @@ int process_png(CURL *curl_handle, RECV_BUF *p_recv_buf)
 int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_frontier, char* curr_url)
 {
     CURLcode res;
-    char fname[256];
-    pid_t pid =getpid();
     long response_code;
     char *eff_url = NULL;
 
@@ -213,26 +207,9 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
         else{
           return 0;
         }
-    } else {
-        sprintf(fname, "./output_%d", pid);
     }
 
     return 0;
-}
-
-void test_hash(){
-  insert_hash("http://ece252-1.uwaterloo.ca/~yqhuang/lab4/sub1/index.html");
-  insert_hash("http://ece252-1.uwaterloo.ca/~yqhuang/lab4/sub1/index.html");
-  insert_hash("http://ece252-1.uwaterloo.ca:2540/image?q=gAAAAABdHkoqPlVGPQPMpFG8Vjvrodu_pZqXMC4jGRiLcYwY6MkhhFG1m5a3x5ZYDOiLGFmz8FTbq3sAva7QKiXY5YNIxrBdxg==");
-  insert_hash("http://ece252-3.uwaterloo.ca:2540/image?q=gAAAAABdHkoqOKR-cFRCkiCUBEMAAAWfDvBFlRisL9ysLWHYHbcQbn1b28PV_uHBZ0gJf5bvzrnf1HNXxB6KRlAVETwTIqBH2Q==");
-  insert_hash("http://ece252-1.uwaterloo.ca:2531/image?img=1&part=0");
-  insert_hash("http://ece252-1.uwaterloo.ca/~yqhuang/lab4/imgs/Disguise.png");
-  insert_hash("http://ece252-1.uwaterloo.ca/~yqhuang/lab4/imgs/crawler_arch.jpg");
-  insert_hash("http://ece252-1.uwaterloo.ca/~yqhuang/lab4/imgs/para.jpg");
-  insert_hash("http://ece252-1.uwaterloo.ca/lab4");
-  insert_hash("http://ece252-1.uwaterloo.ca:2540/image?q=gAAAAABdHkoqPlVGPQPMpFG8Vjvrodu_pZqXMC4jGRiLcYwY6MkhhFG1m5a3x5ZYDOiLGFmz8FTbq3sAva7QKiXY5YNIxrBdxg==");
-  insert_hash("http://ece252-1.uwaterloo.ca/~yqhuang/lab4/imgs/cpp.jpg");
-  insert_hash("http://ece252-1.uwaterloo.ca/~yqhuang/lab4/#top");
 }
 
 typedef struct thread_args              /* thread input parameters struct */
@@ -283,8 +260,6 @@ void *process_url(void *arg) {
     CURLcode res;
     RECV_BUF recv_buf;
 
-
-    curl_global_init(CURL_GLOBAL_DEFAULT);
     curl_handle = easy_handle_init(&recv_buf, curr_url);
 
     if ( curl_handle == NULL ) {
@@ -334,6 +309,8 @@ int main( int argc, char** argv )
 
   pthread_mutex_init (&barrier_mutex , NULL);
   pthread_cond_init(&cv, NULL);
+  curl_global_init(CURL_GLOBAL_DEFAULT);
+
 
   linked_list* url_frontier = malloc(sizeof(linked_list));
   init(url_frontier);
@@ -432,6 +409,7 @@ int main( int argc, char** argv )
   list_cleanup(url_frontier);
   free(url_frontier);
   xmlCleanupParser();
+  curl_global_cleanup();
 
   return 0;
 }
