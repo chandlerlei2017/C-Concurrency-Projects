@@ -158,6 +158,17 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
 
     if (hsearch(e, FIND) == NULL) {
       fprintf(fp, "%s\n", eff_url);
+
+      pthread_mutex_lock(&ll_mutex);
+
+      char* new_href = (char* ) strdup(eff_url);
+
+      insert_hash(new_href);
+
+      pointers[pointer_count] = new_href;
+      pointer_count += 1;
+
+      pthread_mutex_unlock(&ll_mutex);
     }
     else if(strcmp(curr_url, eff_url) != 0) {
       return 1;
