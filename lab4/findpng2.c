@@ -166,8 +166,8 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     if (hsearch(e, FIND) == NULL) {
       fprintf(fp, "%s\n", eff_url);
     }
-
-    if ( res == CURLE_OK ) {
+    else if(strcmp(curr_url, eff_url) != 0) {
+      return 1;
     }
 
     if ( response_code >= 200 && response_code < 300) {
@@ -305,6 +305,8 @@ void *process_url(void *arg) {
       cleanup(curl_handle, &recv_buf);
     }
     free(curr_url);
+
+    curr_url = NULL;
   }
   return NULL;
 }
@@ -418,6 +420,7 @@ int main( int argc, char** argv )
   // cleanup
   for (int i = 0; i < pointer_count; i++) {
     free(pointers[i]);
+    pointers[i] = NULL;
   }
 
   pthread_mutex_destroy(&ll_mutex);
@@ -427,10 +430,13 @@ int main( int argc, char** argv )
   pthread_cond_destroy(&cv);
 
   free(base_url);
+  base_url = NULL;
   free(p_tids);
+  p_tids = NULL;
   hdestroy();
   list_cleanup(url_frontier);
   free(url_frontier);
+  url_frontier = NULL;
 
   return 0;
 }
