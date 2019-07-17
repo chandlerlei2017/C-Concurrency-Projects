@@ -374,18 +374,6 @@ int main( int argc, char** argv )
 
   hcreate(1000);
 
-  memcpy(base_url, argv[2*count + 1], strlen(argv[2*count + 1]) + 1);
-
-  if(insert_hash(base_url) == 1) {
-    push(url_frontier, base_url);
-  }
-
-  // create threads
-  pthread_t *p_tids = malloc(sizeof(pthread_t) * t);
-
-  thread_args in_params;
-  in_params.url_frontier = url_frontier;
-
   FILE* fp = fopen("png_urls.txt", "w");
   fclose(fp);
 
@@ -393,6 +381,25 @@ int main( int argc, char** argv )
     fp = fopen(v, "w");
     fclose(fp);
   }
+
+  memcpy(base_url, argv[2*count + 1], strlen(argv[2*count + 1]) + 1);
+
+  if(insert_hash(base_url) == 1) {
+    push(url_frontier, base_url);
+
+    if (l_file == 1) {
+      fp = fopen(v, "a+");
+      fprintf(fp, "%s\n", base_url);
+      fclose(fp);
+    }
+
+  }
+
+  // create threads
+  pthread_t *p_tids = malloc(sizeof(pthread_t) * t);
+
+  thread_args in_params;
+  in_params.url_frontier = url_frontier;
 
   png_count = 0;
 
