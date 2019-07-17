@@ -396,7 +396,7 @@ int main( int argc, char** argv )
 
     if (l_file == 1) {
       fp = fopen(v, "a+");
-      fprintf(v, "%s\n", base_url);
+      fprintf(fp, "%s\n", base_url);
       fclose(fp);
     }
 
