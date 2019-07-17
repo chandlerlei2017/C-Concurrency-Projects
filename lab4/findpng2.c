@@ -199,6 +199,14 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
       fclose(fp);
     }
 
+    if ( response_code >= 400 && response_code < 500) {
+    	fprintf(stderr, "Error.\n");
+      return 1;
+    }
+    else if ( response_code >= 500 && response_code < 600) {
+      return 1;
+    }
+
     char *ct = NULL;
     res = curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ct);
     if ( res == CURLE_OK && ct != NULL ) {
@@ -218,7 +226,6 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
 
         for (int i = 0; i < 8; i++){
             if(buffer[i] != expected[i]) {
-                //printf("real: %X, expected: %X \n", buffer[i], expected[i]);
                 real_png = 0;
                 break;
             }
@@ -389,7 +396,6 @@ int main( int argc, char** argv )
 
     if (l_file == 1) {
       fp = fopen(v, "a+");
-      fprintf(fp, "%s\n", base_url);
       fclose(fp);
     }
 
