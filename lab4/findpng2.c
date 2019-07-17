@@ -5,6 +5,7 @@ char v[256];
 int png_count;
 int m;
 int t;
+int l_file;
 int first_flag;
 int break_thread;
 pthread_mutex_t ll_mutex;
@@ -77,6 +78,13 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                 href = xmlBuildURI(href, (xmlChar *) base_url);
                 xmlFree(old);
             }
+
+            FILE* fp;
+
+            if (l_file == 1) {
+              fp = fopen(v, "a+");
+            }
+
             if ( href != NULL && !strncmp((const char *)href, "http", 4) ) {
                   pthread_mutex_lock(&ll_mutex);
 
@@ -84,6 +92,9 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
 
                   if(insert_hash(new_href) == 1) {
                     push(url_frontier, new_href);
+                    if (l_file == 1) {
+                      fprintf(fp, "%s\n", new_href);
+                    }
                   }
 
                   pointers[pointer_count] = new_href;
@@ -93,6 +104,10 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
 
             }
             xmlFree(href);
+
+            if (l_file == 1) {
+              fclose(fp);
+            }
         }
         xmlXPathFreeObject (result);
     }
@@ -148,16 +163,22 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     long response_code;
     char *eff_url = NULL;
 
-    FILE* fp = fopen(v, "a+");
-
     res = curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
     curl_easy_getinfo(curl_handle, CURLINFO_EFFECTIVE_URL, &eff_url);
 
     ENTRY e;
     e.key = eff_url;
 
+    FILE* fp;
+
+    if (l_file == 1) {
+      fp = fopen(v, "a+");
+    }
+
     if (hsearch(e, FIND) == NULL) {
-      fprintf(fp, "%s\n", eff_url);
+      if (l_file == 1) {
+        fprintf(fp, "%s\n", eff_url);
+      }
 
       pthread_mutex_lock(&ll_mutex);
 
@@ -174,19 +195,9 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
       return 1;
     }
 
-    if ( response_code >= 200 && response_code < 300) {
-    	fprintf(fp, "%s\n", curr_url);
+    if (l_file == 1) {
+      fclose(fp);
     }
-    else if ( response_code >= 400 && response_code < 500) {
-    	fprintf(stderr, "Error.\n");
-      return 1;
-    }
-    else if ( response_code >= 500 && response_code < 600) {
-      fprintf(fp, "%s\n", curr_url);
-      return 1;
-    }
-
-    fclose(fp);
 
     char *ct = NULL;
     res = curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ct);
@@ -306,6 +317,7 @@ int main( int argc, char** argv )
   first_flag = 0;
   break_thread = 0;
   pointer_count = 0;
+  l_file = 0;
 
   double times[2];
   struct timeval tv;
@@ -327,7 +339,7 @@ int main( int argc, char** argv )
   init(url_frontier);
 
   char *str = "option requires an argument";
-  strcpy(v, "log.txt");
+  strcpy(v, "");
 
   // get arguments
 
@@ -349,6 +361,7 @@ int main( int argc, char** argv )
     break;
     case 'v':
     memcpy(v, optarg, strlen(optarg) + 1);
+    l_file = 1;
     break;
     default:
       return -1;
@@ -356,8 +369,6 @@ int main( int argc, char** argv )
 
     count += 1;
   }
-
-  //printf("t: %d, m: %d, v: %s, %s \n", t, m, v, base_url);
 
   // Initialize the hashset
 
@@ -378,8 +389,10 @@ int main( int argc, char** argv )
   FILE* fp = fopen("png_urls.txt", "w");
   fclose(fp);
 
-  fp = fopen(v, "w");
-  fclose(fp);
+  if (l_file == 1) {
+    fp = fopen(v, "w");
+    fclose(fp);
+  }
 
   png_count = 0;
 
@@ -392,7 +405,6 @@ int main( int argc, char** argv )
   // wait for threads
   for (int i=0; i < t; i++) {
       pthread_join(p_tids[i], NULL);
-      printf("Thread ID %lu joined.\n", p_tids[i]);
   }
 
   if (gettimeofday(&tv, NULL) != 0) {
