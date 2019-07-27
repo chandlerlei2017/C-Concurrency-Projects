@@ -8,10 +8,9 @@ int m;
 
 char* pointers[1000*sizeof(char*)];
 int pointer_count;
-RECV_BUF** buffers;
 
 typedef struct curl_info {
-  int index;
+  RECV_BUF* buf;
   char* url;
 } curl_info;
 
@@ -22,17 +21,8 @@ int insert_hash(char* str) {
   ENTRY e;
   e.key = str;
 
-  if (hsearch(e, FIND) != NULL) {
-    //printf("This is already in the Hashset: %s\n", str);
-  }
-  else {
-    if(hsearch(e, ENTER) == NULL) {
-      //printf("Unable to add to Hash: %s\n", str);
-    }
-    else {
-      //printf("Added to Hash: %s\n", str);
-      return 1;
-    }
+  if (hsearch(e, FIND) == NULL && hsearch(e, ENTER) != NULL) {
+    return 1;
   }
   return 0;
 }
@@ -93,7 +83,6 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
       }
 
       char* new_href = (char* ) strdup(eff_url);
-
       insert_hash(new_href);
 
       pointers[pointer_count] = new_href;
@@ -120,7 +109,6 @@ int process_data(CURL *curl_handle, RECV_BUF *p_recv_buf, linked_list* url_front
     res = curl_easy_getinfo(curl_handle, CURLINFO_CONTENT_TYPE, &ct);
     if ( res == CURLE_OK && ct != NULL ) {
     } else {
-        fprintf(stderr, "Failed obtain Content-Type\n");
         return 2;
     }
 
@@ -175,31 +163,17 @@ int find_http(char *buf, int size, int follow_relative_links, const char *base_u
                 href = xmlBuildURI(href, (xmlChar *) base_url);
                 xmlFree(old);
             }
-
-            FILE* fp;
-
-            if (l_file == 1) {
-              fp = fopen(v, "a+");
-            }
-
             if ( href != NULL && !strncmp((const char *)href, "http", 4) ) {
               char* new_href = (char* ) xmlStrdup(href);
 
               if(insert_hash(new_href) == 1) {
                 push(url_frontier, new_href);
-                if (l_file == 1) {
-                  fprintf(fp, "%s\n", new_href);
-                }
               }
 
               pointers[pointer_count] = new_href;
               pointer_count += 1;
             }
             xmlFree(href);
-
-            if (l_file == 1) {
-              fclose(fp);
-            }
         }
         xmlXPathFreeObject (result);
     }
@@ -247,16 +221,15 @@ int get_args( int argc, char** argv, int* t, int* l_file, int* m, char* v, char*
   return 0;
 }
 
-static void ch_init(CURLM *cm, char* url, int index)
+static void ch_init(CURLM *cm, char* url)
 {
   RECV_BUF* buf = malloc(sizeof(RECV_BUF));
   CURL *eh = easy_handle_init(buf, url);
 
   curl_info* pass = malloc(sizeof(curl_info));
 
-  pass -> index = index;
+  pass -> buf = buf;
   pass -> url = url;
-  buffers[index] = buf;
 
   curl_easy_setopt(eh, CURLOPT_PRIVATE, (void*) pass);
 
@@ -278,6 +251,9 @@ int main( int argc, char** argv )
   png_count = 0;
   strcpy(v, "");
 
+  double times[2];
+  struct timeval tv;
+
   linked_list* url_frontier = malloc(sizeof(linked_list));
   init(url_frontier);
 
@@ -285,8 +261,6 @@ int main( int argc, char** argv )
   if (get_args(argc, argv, &t, &l_file, &m, v, base_url) == -1) {
     return -1;
   }
-
-  buffers = malloc(sizeof(RECV_BUF*) * t);
 
   // Initialize Files
 
@@ -303,20 +277,12 @@ int main( int argc, char** argv )
 
   if(insert_hash(base_url) == 1) {
     push(url_frontier, base_url);
-
-    if (l_file == 1) {
-      fp = fopen(v, "a+");
-      fprintf(fp, "%s\n", base_url);
-      fclose(fp);
-    }
   }
 
   // Initialize Curl Multi
-
   CURLM *cm=NULL;
   CURL *eh=NULL;
   CURLMsg *msg=NULL;
-  CURLcode return_code=0;
   int still_running = 0;
   int msgs_left = 0;
   int http_status_code;
@@ -326,13 +292,34 @@ int main( int argc, char** argv )
   curl_global_init(CURL_GLOBAL_DEFAULT);
   cm = curl_multi_init();
 
+  if (gettimeofday(&tv, NULL) != 0) {
+      perror("gettimeofday");
+      abort();
+  }
+
+  times[0] = (tv.tv_sec) + tv.tv_usec/1000000.;
+
   while (png_count < m && url_frontier -> head != NULL) {
     int curr = 0;
 
+    FILE* fp;
+
+    if (l_file == 1) {
+      fp = fopen(v, "a+");
+    }
+
     while(url_frontier -> head != NULL && curr < t) {
       char* curr_url = pop(url_frontier);
-      ch_init(cm, curr_url, curr);
+      ch_init(cm, curr_url);
       curr += 1;
+
+      if (l_file == 1) {
+        fprintf(fp, "%s\n", curr_url);
+      }
+    }
+
+    if (l_file == 1) {
+      fclose(fp);
     }
 
     curl_multi_perform(cm, &still_running);
@@ -351,12 +338,6 @@ int main( int argc, char** argv )
       if (msg->msg == CURLMSG_DONE) {
         eh = msg->easy_handle;
 
-        return_code = msg->data.result;
-        if(return_code!=CURLE_OK) {
-          //fprintf(stderr, "CURL error code: %d\n", msg->data.result);
-          continue;
-        }
-
         // Get HTTP status code
         http_status_code=0;
 
@@ -365,25 +346,25 @@ int main( int argc, char** argv )
 
         info = (curl_info*) temp;
 
-        if(http_status_code==200) {
-          //printf("200 OK for %s\n", info -> url);
-        } else {
-          //fprintf(stderr, "GET of %s returned http status code %d\n", info -> url, http_status_code);
-        }
-
-        process_data(eh, buffers[info -> index], url_frontier, info -> url);
+        process_data(eh, info -> buf, url_frontier, info -> url);
 
         curl_multi_remove_handle(cm, eh);
-        cleanup(eh, buffers[info -> index]);
-        free(buffers[info -> index]);
+        cleanup(eh, info -> buf);
+        free(info -> buf);
         free(info -> url);
         free(info);
       }
-      else {
-        //fprintf(stderr, "error: after curl_multi_info_read(), CURLMsg=%d\n", msg->msg);
-      }
     }
   }
+
+  if (gettimeofday(&tv, NULL) != 0) {
+    perror("gettimeofday");
+    abort();
+  }
+
+  times[1] = (tv.tv_sec) + tv.tv_usec/1000000.;
+
+ printf("findpng3 execution time: %.6lf seconds\n",  times[1] - times[0]);
 
   for (int i = 0; i < pointer_count; i++) {
     free(pointers[i]);
@@ -392,7 +373,6 @@ int main( int argc, char** argv )
   curl_multi_cleanup(cm);
   curl_global_cleanup();
   free(url_frontier);
-  free(buffers);
 
   return 0;
 }
